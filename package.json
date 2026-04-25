@@ -6,7 +6,7 @@
     "start": "node server/server.js",
     "create-user": "node scripts/create-user.js",
     "delete-user": "node scripts/delete-user.js",
-    "list-users":  "node scripts/list-users.js"
+    "list-users": "node scripts/list-users.js"
   },
   "keywords": [
     "kanban",
@@ -23,6 +23,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.4.1"
+    "express-rate-limit": "^8.4.1",
+    "sortablejs": "^1.15.7"
   }
 }

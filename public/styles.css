@@ -626,11 +626,10 @@ body {
 }
 .list-delete:hover { background: var(--color-surface-hover); color: var(--color-danger); }
 
-.list.list-dragging { opacity: 0.4; transform: rotate(2deg); }
-.list.list-drop-target {
-  outline: 3px dashed var(--color-primary);
-  outline-offset: 2px;
-}
+/* SortableJS classes for list-level drag */
+.list.list-ghost { opacity: 0.35; }
+.list.list-chosen { box-shadow: var(--shadow-pop); }
+.list.list-drag { cursor: grabbing; transform: rotate(1.5deg); }
 
 .cards-container {
   padding: 4px 10px;
@@ -666,8 +665,18 @@ body {
   box-shadow: var(--shadow-pop);
   transform: translateY(-1px);
 }
+/* While the user is dragging a card, suppress hover transforms on OTHER
+   cards — otherwise crossing them re-triggers layout shifts that look like
+   shaking and re-fire dragover events in a feedback loop. */
+.cards-container:has(.card.dragging) .card:not(.dragging):hover {
+  transform: none;
+  box-shadow: var(--shadow-card);
+}
 .card:active { cursor: grabbing; }
-.card.dragging { opacity: 0.4; cursor: grabbing; }
+/* SortableJS classes — replace the old .dragging mechanic */
+.card.card-ghost { opacity: 0.35; }                              /* placeholder left behind */
+.card.card-chosen { box-shadow: var(--shadow-pop); }              /* user just grabbed it */
+.card.card-drag { cursor: grabbing; transform: rotate(2deg); }    /* the floating mirror */
 .card.priority-alta  { border-left-color: var(--priority-high); }
 .card.priority-media { border-left-color: var(--priority-medium); }
 .card.priority-baixa { border-left-color: var(--priority-low); }
@@ -2068,13 +2077,19 @@ body {
     bottom: 0;
     left: 0;
     width: 280px;
-    height: 100vh;
+    /* Reserve space for bottom-nav so workspace items at the bottom of the
+       sidebar (Atividade / Analytics) don't get hidden behind it on mobile */
+    height: calc(100vh - var(--bottom-nav-h));
+    padding-bottom: 16px;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: var(--shadow-modal);
   }
   .sidebar.open { transform: translateX(0); }
   .hamburger-btn { display: inline-flex; }
+  /* Settings já está na bottom-nav no mobile — esconde o gear da topbar pra
+     não duplicar o ponto de entrada (estava aparecendo 2x: topbar + bottom) */
+  #settingsBtn { display: none; }
   .topbar-search { max-width: 100%; }
   .user-menu-name { display: none; }
   .fab { display: flex; align-items: center; justify-content: center; }

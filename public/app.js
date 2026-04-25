@@ -464,7 +464,9 @@ function renderBoardsNav() {
 }
 
 // ============ KANBAN VIEW ============
-let dragKind = null; // 'card' | 'list' | null
+// Drag&drop powered by SortableJS (handles mouse + touch transparently).
+// We initialize fresh Sortable instances on each render — old ones are
+// garbage-collected when their DOM elements are removed.
 
 function renderKanban() {
   const board = state.currentBoard;
@@ -481,60 +483,49 @@ function renderKanban() {
   addBtn.addEventListener('click', addList);
   container.appendChild(addBtn);
 
-  setupListReorder(container);
+  // List-level drag: pick up by header, reorder horizontally
+  Sortable.create(container, {
+    group: 'lists',
+    animation: 180,
+    handle: '.list-header',
+    draggable: '.list',
+    filter: '.add-list-btn, input, button.list-delete',
+    preventOnFilter: false,
+    ghostClass: 'list-ghost',
+    chosenClass: 'list-chosen',
+    dragClass: 'list-drag',
+    onEnd: handleListsEnd,
+  });
 }
 
-function setupListReorder(container) {
-  container.addEventListener('dragover', (e) => {
-    if (dragKind !== 'list') return;
-    e.preventDefault();
-    const draggingList = container.querySelector('.list.list-dragging');
-    if (!draggingList) return;
-    const afterEl = getListDragAfterElement(container, e.clientX);
-    if (afterEl == null) {
-      // Before the "+ Adicionar lista" button (which is the last child)
-      const addBtn = container.querySelector('.add-list-btn');
-      if (addBtn) container.insertBefore(draggingList, addBtn);
-      else container.appendChild(draggingList);
-    } else {
-      container.insertBefore(draggingList, afterEl);
-    }
-  });
-
-  container.addEventListener('drop', async (e) => {
-    if (dragKind !== 'list') return;
-    e.preventDefault();
-    const updates = [...container.querySelectorAll('.list')].map((el, i) => ({
-      id: parseInt(el.dataset.listId),
-      position: i,
-    }));
+async function handleListsEnd() {
+  const container = $('#listsContainer');
+  const updates = [...container.querySelectorAll('.list')].map((el, i) => ({
+    id: parseInt(el.dataset.listId),
+    position: i,
+  }));
+  try {
     await api.post('/api/lists/reorder', updates);
+    // Sync local state so renders use the new order without a network reload
+    for (const u of updates) {
+      const list = state.currentBoard.lists.find(l => l.id === u.id);
+      if (list) list.position = u.position;
+    }
+    state.currentBoard.lists.sort((a, b) => a.position - b.position);
+  } catch {
     await loadBoard(state.currentBoardId);
-  });
-}
-
-function getListDragAfterElement(container, x) {
-  const els = [...container.querySelectorAll('.list:not(.list-dragging)')];
-  return els.reduce((closest, child) => {
-    const box = child.getBoundingClientRect();
-    const offset = x - box.left - box.width / 2;
-    if (offset < 0 && offset > closest.offset) return { offset, element: child };
-    return closest;
-  }, { offset: -Infinity }).element;
+  }
 }
 
 function renderList(list) {
   const el = document.createElement('div');
   el.className = 'list';
   el.dataset.listId = list.id;
-  el.draggable = true;
 
   const header = document.createElement('div');
   header.className = 'list-header';
   const titleInput = document.createElement('input');
   titleInput.value = list.title;
-  titleInput.draggable = false;
-  titleInput.addEventListener('mousedown', (e) => e.stopPropagation());
   titleInput.addEventListener('blur', () => {
     if (titleInput.value.trim() && titleInput.value !== list.title)
       api.put(`/api/lists/${list.id}`, { title: titleInput.value.trim() });
@@ -544,8 +535,6 @@ function renderList(list) {
   const delBtn = document.createElement('button');
   delBtn.className = 'list-delete';
   delBtn.textContent = '×';
-  delBtn.draggable = false;
-  delBtn.addEventListener('mousedown', (e) => e.stopPropagation());
   delBtn.addEventListener('click', async () => {
     if (confirm(`Excluir "${list.title}" e todos os cards?`)) {
       await api.delete(`/api/lists/${list.id}`);
@@ -557,22 +546,6 @@ function renderList(list) {
   header.appendChild(delBtn);
   el.appendChild(header);
 
-  // Drag a list (only when grabbing from the header — see CSS cursor: grab)
-  el.addEventListener('dragstart', (e) => {
-    if (e.target.closest('.cards-container, .add-card-btn, input, button.list-delete')) {
-      // It's a card or interactive element starting the drag — let it through
-      return;
-    }
-    dragKind = 'list';
-    el.classList.add('list-dragging');
-    e.dataTransfer.setData('text/x-list', list.id);
-    e.dataTransfer.effectAllowed = 'move';
-  });
-  el.addEventListener('dragend', () => {
-    el.classList.remove('list-dragging');
-    if (dragKind === 'list') dragKind = null;
-  });
-
   const cardsContainer = document.createElement('div');
   cardsContainer.className = 'cards-container';
   cardsContainer.dataset.listId = list.id;
@@ -581,20 +554,20 @@ function renderList(list) {
     cardsContainer.appendChild(renderCard(card));
   }
 
-  cardsContainer.addEventListener('dragover', (e) => {
-    if (dragKind !== 'card') return;
-    e.preventDefault();
-    cardsContainer.classList.add('drag-over');
-  });
-  cardsContainer.addEventListener('dragleave', () => cardsContainer.classList.remove('drag-over'));
-  cardsContainer.addEventListener('drop', (e) => {
-    if (dragKind !== 'card') return;
-    e.preventDefault();
-    cardsContainer.classList.remove('drag-over');
-    handleDrop(e, list.id, cardsContainer);
-  });
-
   el.appendChild(cardsContainer);
+
+  // Card-level drag: works on touch + mouse, allows moving between lists
+  Sortable.create(cardsContainer, {
+    group: 'cards',         // same group across all lists → cards move freely between
+    animation: 180,
+    ghostClass: 'card-ghost',
+    chosenClass: 'card-chosen',
+    dragClass: 'card-drag',
+    forceFallback: false,
+    fallbackOnBody: true,   // drag mirror lives in body so it doesn't get clipped
+    swapThreshold: 0.65,
+    onEnd: handleCardsEnd,
+  });
 
   const addCard = document.createElement('button');
   addCard.className = 'add-card-btn';
@@ -605,11 +578,30 @@ function renderList(list) {
   return el;
 }
 
+async function handleCardsEnd() {
+  // Sortable already moved the DOM; gather the new order from ALL lists
+  // (cards may have moved between lists, so we re-index everything).
+  const updates = [];
+  $$('.cards-container').forEach(container => {
+    const listId = parseInt(container.dataset.listId);
+    [...container.querySelectorAll('.card')].forEach((cardEl, i) => {
+      updates.push({ id: parseInt(cardEl.dataset.cardId), list_id: listId, position: i });
+    });
+  });
+  if (!updates.length) return;
+  try {
+    await api.post('/api/cards/reorder', updates);
+    syncCardPositionsLocally(updates);
+  } catch {
+    await loadBoard(state.currentBoardId);
+  }
+}
+
 function renderCard(card) {
   const el = document.createElement('div');
   el.className = `card priority-${card.priority || 'media'}`;
-  el.draggable = true;
   el.dataset.cardId = card.id;
+  // No more `el.draggable = true` — Sortable manages the drag attribute
 
   // Category pill on top (if set)
   if (card.category && CATEGORIES[card.category]) {
@@ -638,18 +630,6 @@ function renderCard(card) {
   if (meta) el.appendChild(meta);
 
   el.addEventListener('click', () => openCardModal(card));
-  el.addEventListener('dragstart', (e) => {
-    e.stopPropagation();
-    dragKind = 'card';
-    el.classList.add('dragging');
-    e.dataTransfer.setData('text/plain', card.id);
-    e.dataTransfer.effectAllowed = 'move';
-  });
-  el.addEventListener('dragend', () => {
-    el.classList.remove('dragging');
-    if (dragKind === 'card') dragKind = null;
-  });
-
   return el;
 }
 
@@ -676,36 +656,26 @@ function buildMeta(card) {
   return meta.children.length ? meta : null;
 }
 
-async function handleDrop(e, targetListId, container) {
-  const cardId = parseInt(e.dataTransfer.getData('text/plain'));
-  if (!cardId) return;
-
-  const afterEl = getDragAfterElement(container, e.clientY);
-  const draggingEl = document.querySelector('.card.dragging');
-  if (!draggingEl) return;
-
-  if (afterEl == null) container.appendChild(draggingEl);
-  else container.insertBefore(draggingEl, afterEl);
-
-  const updates = [...container.querySelectorAll('.card')].map((el, i) => ({
-    id: parseInt(el.dataset.cardId),
-    list_id: targetListId,
-    position: i,
-  }));
-
-  await api.post('/api/cards/reorder', updates);
-  await loadBoard(state.currentBoardId);
+// Mutates state.currentBoard to match the new positions/list assignments
+// the user made via drag&drop, without doing a full network reload. Keeps
+// the UI smooth — no rerender flicker, no scroll position lost.
+function syncCardPositionsLocally(updates) {
+  if (!state.currentBoard) return;
+  const cardsById = new Map();
+  for (const list of state.currentBoard.lists) {
+    for (const card of list.cards) cardsById.set(card.id, card);
+  }
+  for (const u of updates) {
+    const card = cardsById.get(u.id);
+    if (card) { card.list_id = u.list_id; card.position = u.position; }
+  }
+  for (const list of state.currentBoard.lists) {
+    list.cards = [...cardsById.values()]
+      .filter(c => c.list_id === list.id)
+      .sort((a, b) => a.position - b.position);
+  }
 }
 
-function getDragAfterElement(container, y) {
-  const els = [...container.querySelectorAll('.card:not(.dragging)')];
-  return els.reduce((closest, child) => {
-    const box = child.getBoundingClientRect();
-    const offset = y - box.top - box.height / 2;
-    if (offset < 0 && offset > closest.offset) return { offset, element: child };
-    return closest;
-  }, { offset: -Infinity }).element;
-}
 
 // ============ TABLE VIEW (grouped) ============
 function renderTable() {
@@ -1898,11 +1868,26 @@ function setupEventListeners() {
     if (!e.target.closest('.user-menu')) $('#userMenuDropdown')?.classList.add('hidden');
   });
 
-  // Bottom nav (mobile) — same behavior as view-tabs
-  $$('.bottom-nav-item').forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
+  // Bottom nav (mobile) — for workspace-level views (settings/activity/analytics),
+  // re-tapping an active item returns the user to their last per-board view.
+  $$('.bottom-nav-item').forEach(t => t.addEventListener('click', () => {
+    const target = t.dataset.view;
+    if (state.view === target && WORKSPACE_VIEWS.has(target)) {
+      switchView(state.lastBoardView || 'kanban');
+    } else {
+      switchView(target);
+    }
+  }));
 
-  // Workspace nav (sidebar)
-  $$('.ws-nav-item').forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
+  // Workspace nav (sidebar) — same toggle behavior
+  $$('.ws-nav-item').forEach(t => t.addEventListener('click', () => {
+    const target = t.dataset.view;
+    if (state.view === target && WORKSPACE_VIEWS.has(target)) {
+      switchView(state.lastBoardView || 'kanban');
+    } else {
+      switchView(target);
+    }
+  }));
 
   // Refresh button on Activity view
   $('#refreshActivityBtn')?.addEventListener('click', renderActivity);

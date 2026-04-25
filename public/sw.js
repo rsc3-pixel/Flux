@@ -3,12 +3,13 @@
 // - API calls: always network, never cached (data must be fresh)
 // - Bumps the cache name to invalidate everything on each release
 
-const CACHE = 'flux-v1';
+const CACHE = 'flux-v2';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/styles.css',
   '/app.js',
+  '/vendor/sortable.min.js',
   '/flux-logo.svg',
   '/flux-mark.svg',
   '/manifest.json',
