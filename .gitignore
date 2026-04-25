@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Local SQLite database (data — not source)
+server/database.sqlite
+server/database.sqlite-wal
+server/database.sqlite-shm
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Env files (anything with secrets)
+.env
+.env.local
+.env.*.local
+
+# Claude scratch
+.claude/

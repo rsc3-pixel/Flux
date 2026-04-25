@@ -1,0 +1,28 @@
+{
+  "name": "flux",
+  "version": "1.0.0",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "create-user": "node scripts/create-user.js",
+    "delete-user": "node scripts/delete-user.js",
+    "list-users":  "node scripts/list-users.js"
+  },
+  "keywords": [
+    "kanban",
+    "task-management",
+    "trello"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Ferramenta de gestão e planejamento de tarefas estilo Trello/monday.com",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.9.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.4.1"
+  }
+}

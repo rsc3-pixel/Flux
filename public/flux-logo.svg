@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Flux brand mark — three right-pointing arrows arranged to form an "F".
+  Geometry built on a 240×280 grid with consistent measurements:
+    - All arrow bodies: 48 high
+    - Arrow heads: 80 tall × 44 wide (16 overhang each side of body)
+    - Each arrow indented 20 to the right of the previous
+    - Each "fold" (darker triangle) is a 20×40 right triangle on the bottom-left,
+      visually connecting to the next arrow's left edge to form the F's vertical stroke
+  Single colour fill = the brand uses currentColor for monochrome use.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-label="Flux">
+  <!-- TOP arrow -->
+  <path fill="#00399A" d="M 24 80 L 44 80 L 44 120 Z"/>
+  <path fill="#0052CC" d="M 24 32 L 176 32 L 176 16 L 220 56 L 176 96 L 176 80 L 24 80 Z"/>
+
+  <!-- MIDDLE arrow (indented +20) -->
+  <path fill="#00399A" d="M 44 168 L 64 168 L 64 208 Z"/>
+  <path fill="#0052CC" d="M 44 120 L 164 120 L 164 104 L 208 144 L 164 184 L 164 168 L 44 168 Z"/>
+
+  <!-- BOTTOM arrow (indented +40, shorter) -->
+  <path fill="#00399A" d="M 64 256 L 84 256 L 64 276 Z"/>
+  <path fill="#0052CC" d="M 64 208 L 138 208 L 138 192 L 182 232 L 138 272 L 138 256 L 64 256 Z"/>
+</svg>
