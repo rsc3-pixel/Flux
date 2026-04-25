@@ -74,7 +74,7 @@ Inspirado em Trello e monday.com, feito do zero em vanilla JS sem frameworks pes
 | Backend | Node.js 20 + Express 5 |
 | Banco | SQLite via [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) |
 | Auth | bcryptjs + cookie-parser + express-rate-limit |
-| Deploy | Docker + [Fly.io](https://fly.io) (com volume persistente) |
+| Deploy | Node.js direto numa VM (Google Cloud Compute Engine, Oracle Cloud, etc.) ou Docker |
 
 ---
 
@@ -100,26 +100,41 @@ npm run list-users                           # lista contas + sessões ativas
 
 ---
 
-## ☁️ Deploy (Fly.io)
+## ☁️ Deploy (VM Linux — exemplo GCP / Oracle / qualquer Ubuntu)
+
+Numa VM Ubuntu 22.04+ com acesso SSH:
 
 ```bash
-# 1. Instalar flyctl (Windows)
-iwr https://fly.io/install.ps1 -useb | iex
+# 1. Instalar Node.js 20 + git + build tools
+sudo apt update && sudo apt install -y curl git build-essential
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 
-# 2. Login
-fly auth login
+# 2. Clonar e instalar
+git clone https://github.com/rsc3-pixel/Flux.git
+cd Flux
+npm install --omit=dev
 
-# 3. Editar fly.toml e trocar "flux-CHANGE-ME" pelo nome único
-# 4. Lançar
-fly launch --no-deploy --copy-config --name flux-SEUNOME --region gru
-fly volumes create flux_data --region gru --size 1 --yes
-fly deploy
+# 3. Criar pasta de dados persistente fora do repo
+sudo mkdir -p /var/lib/flux && sudo chown $USER /var/lib/flux
 
-# 5. Após criar sua conta no app, trancar cadastro:
-fly secrets set ALLOW_REGISTRATION=false
+# 4. Rodar com PM2 (mantém processo 24/7, restart automático no boot)
+sudo npm install -g pm2
+DATA_DIR=/var/lib/flux NODE_ENV=production PORT=3000 \
+  pm2 start server/server.js --name flux
+pm2 save
+pm2 startup   # siga a instrução que ele imprimir
+
+# 5. Liberar porta no firewall do provedor (GCP/Oracle/etc) p/ 3000 ou 80
+
+# 6. Após criar sua conta, trancar cadastro:
+pm2 set flux:env ALLOW_REGISTRATION false
+pm2 restart flux --update-env
 ```
 
-Custo aproximado: **~R$15/mês** (1 máquina shared-cpu 256MB + volume 1GB + tráfego dentro do free tier).
+Custo: **gratuito** no free tier de GCP (e2-micro) ou Oracle Cloud Always Free.
+
+Em produção real, recomenda-se colocar **Nginx** na frente como reverse proxy + **Let's Encrypt** pra HTTPS.
 
 ---
 
@@ -140,8 +155,7 @@ Flux/
 │   ├── manifest.json # PWA manifest
 │   └── sw.js         # service worker
 ├── scripts/          # CLI pra gerenciar usuários
-├── Dockerfile        # imagem de produção
-└── fly.toml          # config Fly.io
+└── Dockerfile        # imagem de produção (opcional, pra deploy via container)
 ```
 
 ---

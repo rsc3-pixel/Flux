@@ -34,9 +34,8 @@ MeuTrello/                  # folder ainda se chama assim, produto = Flux
 │   ├── create-user.js      # npm run create-user -- email pass "Nome"
 │   ├── delete-user.js      # npm run delete-user -- email --yes
 │   └── list-users.js       # npm run list-users
-├── Dockerfile              # Node 20-bookworm-slim, multi-step com build deps
+├── Dockerfile              # Node 20-bookworm-slim, multi-step com build deps (opcional, pra container)
 ├── .dockerignore
-├── fly.toml                # config Fly.io (app="flux-CHANGE-ME", region=gru, volume flux_data)
 ├── package.json
 └── CLAUDE.md               # este arquivo
 ```
@@ -88,30 +87,29 @@ MeuTrello/                  # folder ainda se chama assim, produto = Flux
 
 ### PWA + Deploy prep
 - `manifest.json` + meta tags iOS + service worker básico
-- Dockerfile com better-sqlite3 nativo
-- `fly.toml` configurado pra região São Paulo, volume persistente, máquina sempre ligada
-- `DATA_DIR` env var (db.js usa pra encontrar SQLite em `/data` no container)
+- Dockerfile com better-sqlite3 nativo (mantido como opção, mas deploy atual NÃO usa Docker)
+- `DATA_DIR` env var (db.js usa pra encontrar SQLite fora do repo — `/var/lib/flux` na VM)
 - `ALLOW_REGISTRATION` env var (default on; quando off, esconde aba Criar Conta + retorna 403)
 - Endpoint público `/api/config` retorna `{ registrationEnabled }`
 
 ---
 
-## Status atual: aguardando deploy
+## Status atual: deploy em GCP Compute Engine (em andamento)
 
-**Tudo pronto pra deploy no Fly.io. Usuário decidiu pagar ~R$15/mês (Fly.io) em vez de Oracle Cloud free (que é mais complexo de configurar).**
+**Plataforma escolhida: Google Cloud Compute Engine (free tier, e2-micro, us-west1-a, Ubuntu 24.04).**
 
-### Próximos passos quando o usuário voltar:
+Fly.io foi descartado (user achou complexo / preferiu free tier). Arquivos `fly.toml` foram removidos do repo. Repo público: https://github.com/rsc3-pixel/Flux
 
-1. Verificar se ele já instalou flyctl (`iwr https://fly.io/install.ps1 -useb | iex` no PowerShell)
-2. Trocar `flux-CHANGE-ME` em [fly.toml](fly.toml) por nome único escolhido por ele
-3. Guiar nos comandos:
-   ```bash
-   fly auth login
-   fly launch --no-deploy --copy-config --name <nome> --region gru
-   fly volumes create flux_data --region gru --size 1 --yes
-   fly deploy
-   fly secrets set ALLOW_REGISTRATION=false  # depois que ele criar conta no app
-   ```
+### Como o deploy é feito (passo a passo na VM)
+
+1. SSH via `gcloud compute ssh flux --zone=us-west1-a` (do PowerShell local). SSH no navegador do GCP exigiu habilitar a Cloud IAP API + criar regra de firewall pra range `35.235.240.0/20` na porta 22, mas mesmo assim ficou instável — gcloud CLI é mais confiável.
+2. Instalar Node 20 + git + build-essential.
+3. Clonar repo, `npm install --omit=dev`.
+4. Pasta de dados em `/var/lib/flux` (fora do repo, sobrevive a `git pull`).
+5. Rodar com PM2: `DATA_DIR=/var/lib/flux NODE_ENV=production PORT=3000 pm2 start server/server.js --name flux`.
+6. `pm2 save && pm2 startup` pra subir junto com a VM.
+7. Liberar porta no firewall do GCP (regra ingress TCP:3000 ou usar nginx + porta 80/443).
+8. Acesso pelo IP externo da VM ou domínio.
 
 ---
 
@@ -129,7 +127,7 @@ Login do usuário (no banco local): **rsc3@cesar.school** (senha que ele criou).
 
 ## Decisões importantes (pra não voltar atrás)
 
-- **SQLite** em vez de Postgres — escolhido pela simplicidade e match com skills do user. Fly.io tem volume persistente que funciona bem.
+- **SQLite** em vez de Postgres — escolhido pela simplicidade e match com skills do user. Em VM Linux mora em `/var/lib/flux/database.sqlite` (fora do repo, sobrevive a `git pull`).
 - **Vanilla HTML/CSS/JS** sem framework — user prefere assim, e o app não precisa de SPA framework
 - **DiceBear** por URL (não self-hosted) — privacidade aceitável pq user já é dono do email
 - **Single workspace por user** (não multi) — escopo Iter 3, multi-workspace seria Iter 3b se ele pedir
