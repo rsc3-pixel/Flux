@@ -84,6 +84,7 @@
           <button class="ws-nav-item" data-view="analytics" data-icon="bar-chart-3" data-anim="bounce">Analytics</button>
           <button class="ws-nav-item" id="reportBugBtn"     data-icon="bug"         data-anim="shake">Reportar bug</button>
         </nav>
+        <div class="sidebar-version" id="sidebarVersion"></div>
       </div>
     </aside>
 
@@ -149,6 +150,7 @@
                   <option value="documentacao">Documentação</option>
                   <option value="bug">Bug</option>
                   <option value="ui-design">UI Design</option>
+                  <option value="lista">Lista</option>
                 </select>
               </label>
               <label>Prioridade
@@ -438,8 +440,30 @@
             <option value="documentacao">Documentação</option>
             <option value="bug">Bug</option>
             <option value="ui-design">UI Design</option>
+            <option value="lista">Lista</option>
           </select>
         </label>
+
+        <div class="checklist-section" id="checklistSection">
+          <div class="checklist-header">
+            <strong class="checklist-title">
+              <span data-icon="check-square" data-icon-only="true" data-anim="pop"></span>
+              Checklist
+              <span class="checklist-progress" id="checklistProgress"></span>
+            </strong>
+          </div>
+          <div class="checklist-progress-bar" id="checklistProgressBar"><div class="checklist-progress-fill"></div></div>
+          <ul class="checklist-list" id="checklistList"></ul>
+          <button type="button" class="checklist-add-btn" id="checklistAddBtn" data-icon="plus" data-anim="pop">
+            <span class="checklist-add-empty">Adicionar checklist</span>
+            <span class="checklist-add-more">Adicionar item</span>
+          </button>
+          <div class="checklist-input-row hidden" id="checklistInputRow">
+            <input type="text" id="checklistInput" maxlength="500" placeholder="Item da lista..." autocomplete="off" />
+            <button type="button" class="btn btn-primary btn-sm" id="checklistConfirmBtn">Adicionar</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="checklistCancelBtn">Cancelar</button>
+          </div>
+        </div>
 
         <div class="form-row">
           <label>Prioridade
@@ -563,6 +587,25 @@
           <button type="button" class="btn btn-ghost" data-close-wizard>Cancelar</button>
           <button type="button" class="btn btn-primary" id="wizNextBtn">Próximo ›</button>
           <button type="button" class="btn btn-primary hidden" id="wizFinishBtn">Criar quadro</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Modal: dedicated Lista view (Samsung Notes-style, separate from Editar Card) -->
+  <div class="modal-backdrop hidden" id="listaModal">
+    <div class="modal modal-lista">
+      <header class="modal-header lista-header">
+        <input type="text" id="listaTitleInput" class="lista-title-input" placeholder="Título da lista" maxlength="200" />
+        <button type="button" class="modal-close" data-close-lista data-icon="x" data-icon-only="true" data-anim="pop" aria-label="Fechar"></button>
+      </header>
+      <div class="modal-body lista-body">
+        <div class="lista-items" id="listaItems"></div>
+      </div>
+      <footer class="modal-footer">
+        <button type="button" class="btn btn-danger" id="listaDeleteCardBtn">Excluir lista</button>
+        <div class="footer-right">
+          <button type="button" class="btn btn-primary" data-close-lista>Concluir</button>
         </div>
       </footer>
     </div>

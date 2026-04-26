@@ -147,6 +147,20 @@ if (!boardCols.includes('workspace_id')) {
   db.exec('ALTER TABLE boards ADD COLUMN workspace_id INTEGER REFERENCES workspaces(id)');
 }
 
+// ---- CHECKLIST ITEMS (Iteration 4) ----
+db.exec(`
+  CREATE TABLE IF NOT EXISTS checklist_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id    INTEGER NOT NULL,
+    text       TEXT NOT NULL,
+    completed  INTEGER NOT NULL DEFAULT 0,
+    position   INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
+`);
+
 // Backfill: every user without a workspace gets a default "Pessoal" one,
 // and every board without a workspace_id is linked to its owner's workspace.
 db.transaction(() => {

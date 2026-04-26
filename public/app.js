@@ -61,6 +61,9 @@ const ICONS = {
   'activity':          '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
   'box':               '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
   'bug':               '<path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/>',
+  'check-square':      '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  'arrow-up':          '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
+  'arrow-down':        '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
 };
 
 function svgIcon(name) {
@@ -109,6 +112,7 @@ const CATEGORIES = {
   'documentacao':  { label: 'DOCUMENTAÇÃO',  color: '#F59E0B' },
   'bug':           { label: 'BUG',           color: '#F97316' },
   'ui-design':     { label: 'UI DESIGN',     color: '#06B6D4' },
+  'lista':         { label: 'LISTA',         color: '#059669' },
 };
 
 // DiceBear avatar URL (SVG, no API key needed)
@@ -154,6 +158,7 @@ const api = {
   get:    async (url)       => (await request(url)).json(),
   post:   async (url, body) => (await request(url, { method: 'POST',   body: JSON.stringify(body) })).json(),
   put:    async (url, body) => (await request(url, { method: 'PUT',    body: JSON.stringify(body) })).json(),
+  patch:  async (url, body) => (await request(url, { method: 'PATCH',  body: JSON.stringify(body) })).json(),
   delete: async (url)       => request(url, { method: 'DELETE' }),
 };
 
@@ -603,7 +608,6 @@ function renderCard(card) {
   const el = document.createElement('div');
   el.className = `card priority-${card.priority || 'media'}`;
   el.dataset.cardId = card.id;
-  // No more `el.draggable = true` — Sortable manages the drag attribute
 
   // Category pill on top (if set)
   if (card.category && CATEGORIES[card.category]) {
@@ -625,13 +629,45 @@ function renderCard(card) {
   }
 
   const titleEl = document.createElement('div');
+  titleEl.className = 'card-title';
   titleEl.textContent = card.title;
   el.appendChild(titleEl);
+
+  // LISTA cards: show a read-only preview of items right on the card so you
+  // can see what's on the list at a glance. Tapping the card opens the
+  // dedicated lista view (a clean editor — not the full Editar Card modal).
+  if (card.category === 'lista') {
+    const items = card.checklist_items || [];
+    if (items.length > 0) {
+      const preview = document.createElement('div');
+      preview.className = 'card-lista-preview';
+      const max = 6;
+      for (const item of items.slice(0, max)) {
+        const line = document.createElement('div');
+        line.className = 'card-lista-preview-line' + (item.completed ? ' is-done' : '');
+        line.innerHTML = `<span class="card-lista-preview-box">${item.completed ? '✓' : ''}</span><span>${escapeHtml(item.text)}</span>`;
+        preview.appendChild(line);
+      }
+      if (items.length > max) {
+        const more = document.createElement('div');
+        more.className = 'card-lista-preview-more';
+        more.textContent = `+${items.length - max} item${items.length - max > 1 ? 's' : ''}`;
+        preview.appendChild(more);
+      }
+      el.appendChild(preview);
+    }
+  }
 
   const meta = buildMeta(card);
   if (meta) el.appendChild(meta);
 
-  el.addEventListener('click', () => openCardModal(card));
+  // LISTA cards open the dedicated lista view; everything else opens the
+  // standard Editar Card modal.
+  if (card.category === 'lista') {
+    el.addEventListener('click', () => openListaView(card));
+  } else {
+    el.addEventListener('click', () => openCardModal(card));
+  }
   return el;
 }
 
@@ -646,6 +682,19 @@ function buildMeta(card) {
     b.textContent = '📅 ' + formatDate(card.due_date);
     meta.appendChild(b);
   }
+
+  // Checklist progress badge — only on cards that DON'T render the inline list
+  // (LISTA cards already show items + count inline above; the badge would dupe it).
+  const items = card.checklist_items || [];
+  if (items.length > 0 && card.category !== 'lista') {
+    const done = items.filter(i => i.completed).length;
+    const b = document.createElement('span');
+    b.className = 'card-badge card-checklist-badge';
+    if (done === items.length) b.classList.add('is-complete');
+    b.textContent = `☑ ${done}/${items.length}`;
+    meta.appendChild(b);
+  }
+
   if (card.assignee) {
     // mini-avatar (DiceBear seed = assignee name) on the right
     const av = document.createElement('span');
@@ -1288,6 +1337,8 @@ function activityText(e) {
     case 'member.added':        return `${who} <span class="a-action">entrou como</span> ${t(d.role || 'membro')}`;
     case 'member.removed':      return `${who} <span class="a-action">removeu</span> ${t(d.name || '?')}`;
     case 'member.role_changed': return `${who} <span class="a-action">mudou o papel de</span> ${t(d.name || '?')} <span class="a-action">para</span> ${t(d.role || '?')}`;
+    case 'checklist.item_added':   return `${who} <span class="a-action">adicionou</span> ${t(d.text || '?')} <span class="a-action">à checklist de</span> ${t(d.card || '?')}`;
+    case 'checklist.item_removed': return `${who} <span class="a-action">removeu</span> ${t(d.text || '?')} <span class="a-action">da checklist de</span> ${t(d.card || '?')}`;
     default:                    return `${who} <span class="a-action">${escapeHtml(e.action)}</span>`;
   }
 }
@@ -1396,8 +1447,169 @@ function openCardModal(card, listId = null) {
   $('#cardAssigneeInput').value = card?.assignee || '';
   $('#cardModalTitle').textContent = card ? 'Editar Card' : 'Novo Card';
   $('#cardDeleteBtn').style.display = card ? '' : 'none';
+
+  // Checklist is per-card data, only available once the card has been saved.
+  // For new cards we hide the whole section; user can add items after first save.
+  const section = $('#checklistSection');
+  if (card?.id) {
+    section.classList.remove('hidden');
+    state.editingChecklist = (card.checklist_items || []).map(it => ({ ...it }));
+    state.editingCardId = card.id;
+    renderChecklist();
+    // Reset add-item input UI to its closed state
+    $('#checklistInputRow').classList.add('hidden');
+    $('#checklistInput').value = '';
+  } else {
+    section.classList.add('hidden');
+    state.editingChecklist = [];
+    state.editingCardId = null;
+  }
+
   $('#cardModal').classList.remove('hidden');
   setTimeout(() => $('#cardTitleInput').focus(), 50);
+}
+
+// ============ CHECKLIST ============
+function renderChecklist() {
+  const list = $('#checklistList');
+  const items = state.editingChecklist || [];
+  list.innerHTML = '';
+
+  const total = items.length;
+  const done  = items.filter(i => i.completed).length;
+  const pct   = total === 0 ? 0 : Math.round((done / total) * 100);
+
+  // Header progress + bar visibility
+  $('#checklistProgress').textContent = total === 0 ? '' : `${done}/${total}`;
+  $('#checklistProgressBar').classList.toggle('hidden', total === 0);
+  $('#checklistProgressBar').querySelector('.checklist-progress-fill').style.width = pct + '%';
+  $('#checklistSection').classList.toggle('checklist-empty', total === 0);
+
+  // Toggle the "Adicionar checklist" vs "Adicionar item" label
+  const empty = total === 0;
+  $('#checklistAddBtn').classList.toggle('is-empty', empty);
+
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const li = document.createElement('li');
+    li.className = 'checklist-item' + (it.completed ? ' is-done' : '');
+    li.dataset.itemId = it.id;
+    li.innerHTML = `
+      <button type="button" class="checklist-checkbox" data-action="toggle" aria-label="Marcar"></button>
+      <span class="checklist-text" data-action="edit">${escapeHtml(it.text)}</span>
+      <div class="checklist-actions">
+        <button type="button" class="checklist-icon-btn" data-action="up"     ${i === 0 ? 'disabled' : ''} aria-label="Subir"     data-icon="arrow-up"   data-icon-only="true" data-anim="slide"></button>
+        <button type="button" class="checklist-icon-btn" data-action="down"   ${i === items.length - 1 ? 'disabled' : ''} aria-label="Descer"  data-icon="arrow-down" data-icon-only="true" data-anim="slide"></button>
+        <button type="button" class="checklist-icon-btn checklist-delete-btn" data-action="delete" aria-label="Excluir" data-icon="x" data-icon-only="true" data-anim="shake"></button>
+      </div>
+    `;
+    list.appendChild(li);
+  }
+  injectIcons(list);
+}
+
+async function checklistAddItem(text) {
+  const cardId = state.editingCardId;
+  if (!cardId || !text.trim()) return;
+  try {
+    const item = await api.post(`/api/cards/${cardId}/checklist`, { text: text.trim() });
+    if (item && item.id) {
+      state.editingChecklist.push(item);
+      renderChecklist();
+      // Mirror into in-memory board so the card preview badge updates without
+      // a full reload after the modal closes.
+      mirrorChecklistToBoard(cardId);
+    }
+  } catch (e) {
+    alert('Falha ao adicionar item da checklist.');
+  }
+}
+
+async function checklistToggleItem(itemId) {
+  const it = state.editingChecklist.find(i => i.id === itemId);
+  if (!it) return;
+  const next = !it.completed;
+  // Optimistic
+  it.completed = next ? 1 : 0;
+  renderChecklist();
+  try {
+    await api.patch(`/api/checklist/${itemId}`, { completed: next });
+    mirrorChecklistToBoard(state.editingCardId);
+  } catch (e) {
+    it.completed = next ? 0 : 1; // revert
+    renderChecklist();
+    alert('Falha ao atualizar item.');
+  }
+}
+
+async function checklistDeleteItem(itemId) {
+  const idx = state.editingChecklist.findIndex(i => i.id === itemId);
+  if (idx < 0) return;
+  const removed = state.editingChecklist.splice(idx, 1)[0];
+  renderChecklist();
+  try {
+    await api.delete(`/api/checklist/${itemId}`);
+    mirrorChecklistToBoard(state.editingCardId);
+  } catch (e) {
+    state.editingChecklist.splice(idx, 0, removed);
+    renderChecklist();
+    alert('Falha ao excluir item.');
+  }
+}
+
+async function checklistEditItem(itemId) {
+  const it = state.editingChecklist.find(i => i.id === itemId);
+  if (!it) return;
+  const next = prompt('Editar item:', it.text);
+  if (next == null) return;
+  const trimmed = next.trim();
+  if (!trimmed || trimmed === it.text) return;
+  const before = it.text;
+  it.text = trimmed;
+  renderChecklist();
+  try {
+    await api.patch(`/api/checklist/${itemId}`, { text: trimmed });
+    mirrorChecklistToBoard(state.editingCardId);
+  } catch (e) {
+    it.text = before;
+    renderChecklist();
+    alert('Falha ao editar item.');
+  }
+}
+
+async function checklistMoveItem(itemId, direction) {
+  const items = state.editingChecklist;
+  const idx = items.findIndex(i => i.id === itemId);
+  if (idx < 0) return;
+  const swapWith = idx + direction;
+  if (swapWith < 0 || swapWith >= items.length) return;
+  [items[idx], items[swapWith]] = [items[swapWith], items[idx]];
+  renderChecklist();
+  try {
+    await api.patch(`/api/cards/${state.editingCardId}/checklist/reorder`,
+      { ids: items.map(i => i.id) });
+    mirrorChecklistToBoard(state.editingCardId);
+  } catch (e) {
+    [items[idx], items[swapWith]] = [items[swapWith], items[idx]];
+    renderChecklist();
+    alert('Falha ao reordenar.');
+  }
+}
+
+// Sync the local edit state into state.currentBoard so the card preview's
+// progress badge / inline list reflects checklist changes immediately. We
+// also re-render the current view so the board updates even when the user
+// closes the modal with X/Cancel (no implicit Save needed).
+function mirrorChecklistToBoard(cardId) {
+  if (!state.currentBoard || !cardId) return;
+  for (const list of state.currentBoard.lists) {
+    const card = list.cards.find(c => c.id === cardId);
+    if (card) {
+      card.checklist_items = state.editingChecklist.map(it => ({ ...it }));
+      renderCurrentView();
+      return;
+    }
+  }
 }
 
 async function saveCard(e) {
@@ -1427,6 +1639,209 @@ async function deleteCard() {
   await api.delete(`/api/cards/${id}`);
   closeAllModals();
   await loadBoard(state.currentBoardId);
+}
+
+// ============ MODAL: LISTA (dedicated, Samsung Notes-style) ============
+// Used only for cards with category === 'lista'. A clean editor: title at top,
+// items as <checkbox + input> rows, plus a permanent empty buffer row at the
+// end that creates a new item when typed. Enter in an item moves to next; on
+// the buffer it submits and stays focused for rapid entry. Backspace on an
+// empty row deletes that item and steps back to the previous one.
+function openListaView(card) {
+  state.listaCard = card;
+
+  // Title
+  const titleInput = $('#listaTitleInput');
+  titleInput.value = card.title || '';
+  titleInput.onblur = async () => {
+    const next = titleInput.value.trim();
+    if (!next) { titleInput.value = card.title || ''; return; }
+    if (next === card.title) return;
+    try {
+      await api.put(`/api/cards/${card.id}`, { title: next });
+      card.title = next;
+    } catch {
+      titleInput.value = card.title || '';
+    }
+  };
+  titleInput.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = $('#listaItems').querySelector('input.lista-item-text');
+      first?.focus();
+    }
+  };
+
+  // Items
+  renderListaItems(card);
+
+  $('#listaModal').classList.remove('hidden');
+  setTimeout(() => {
+    // Auto-focus the buffer input so user can start typing immediately
+    const buf = $('#listaItems').querySelector('.lista-buffer .lista-item-text');
+    buf?.focus();
+  }, 50);
+}
+
+function renderListaItems(card) {
+  const wrap = $('#listaItems');
+  wrap.innerHTML = '';
+  const items = card.checklist_items || (card.checklist_items = []);
+  for (const item of items) {
+    wrap.appendChild(makeListaItemRow(card, item, items, wrap));
+  }
+  wrap.appendChild(makeListaBufferRow(card, items, wrap));
+}
+
+function makeListaItemRow(card, item, items, wrap) {
+  const row = document.createElement('div');
+  row.className = 'lista-row' + (item.completed ? ' is-done' : '');
+  row.dataset.itemId = item.id;
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'lista-check';
+  cb.checked = !!item.completed;
+  cb.addEventListener('change', async () => {
+    const next = cb.checked;
+    item.completed = next ? 1 : 0;
+    row.classList.toggle('is-done', next);
+    try {
+      await api.patch(`/api/checklist/${item.id}`, { completed: next });
+    } catch {
+      cb.checked = !next;
+      item.completed = next ? 0 : 1;
+      row.classList.toggle('is-done', !next);
+    }
+  });
+  row.appendChild(cb);
+
+  const text = document.createElement('input');
+  text.type = 'text';
+  text.className = 'lista-item-text';
+  text.value = item.text;
+  text.maxLength = 500;
+
+  text.addEventListener('blur', async () => {
+    const next = text.value.trim();
+    if (!next) {
+      // Cleared on blur → delete the item
+      try {
+        await api.delete(`/api/checklist/${item.id}`);
+        const idx = items.findIndex(i => i.id === item.id);
+        if (idx >= 0) items.splice(idx, 1);
+        row.remove();
+      } catch {
+        text.value = item.text;
+      }
+      return;
+    }
+    if (next === item.text) return;
+    try {
+      await api.patch(`/api/checklist/${item.id}`, { text: next });
+      item.text = next;
+    } catch {
+      text.value = item.text;
+    }
+  });
+  text.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const nextTextEl = row.nextElementSibling?.querySelector('.lista-item-text');
+      nextTextEl?.focus();
+    } else if (e.key === 'Backspace' && text.value === '') {
+      e.preventDefault();
+      const prev = row.previousElementSibling?.querySelector('.lista-item-text');
+      try {
+        await api.delete(`/api/checklist/${item.id}`);
+        const idx = items.findIndex(i => i.id === item.id);
+        if (idx >= 0) items.splice(idx, 1);
+        row.remove();
+        prev?.focus();
+      } catch {}
+    }
+  });
+  row.appendChild(text);
+
+  return row;
+}
+
+function makeListaBufferRow(card, items, wrap) {
+  const row = document.createElement('div');
+  row.className = 'lista-row lista-buffer';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'lista-check';
+  cb.disabled = true;
+  cb.tabIndex = -1;
+  row.appendChild(cb);
+
+  const text = document.createElement('input');
+  text.type = 'text';
+  text.className = 'lista-item-text';
+  text.placeholder = 'Adicionar item...';
+  text.maxLength = 500;
+
+  const submit = async () => {
+    const txt = text.value.trim();
+    if (!txt) return null;
+    try {
+      const created = await api.post(`/api/cards/${card.id}/checklist`, { text: txt });
+      if (!card.checklist_items) card.checklist_items = [];
+      card.checklist_items.push(created);
+      items.push(created);
+      const newRow = makeListaItemRow(card, created, items, wrap);
+      wrap.insertBefore(newRow, row);
+      text.value = '';
+      return created;
+    } catch {
+      return null;
+    }
+  };
+
+  text.addEventListener('blur', submit);
+  text.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const created = await submit();
+      if (created) text.focus();
+    } else if (e.key === 'Backspace' && text.value === '') {
+      const prev = row.previousElementSibling?.querySelector('.lista-item-text');
+      if (prev) {
+        e.preventDefault();
+        prev.focus();
+      }
+    }
+  });
+  row.appendChild(text);
+
+  return row;
+}
+
+async function closeListaView() {
+  // Force any focused input to commit (blur) before closing
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+    document.activeElement.blur();
+  }
+  $('#listaModal').classList.add('hidden');
+  // Reload the board so card preview reflects any changes
+  if (state.currentBoardId) await loadBoard(state.currentBoardId);
+  state.listaCard = null;
+}
+
+async function deleteListaCard() {
+  const card = state.listaCard;
+  if (!card) return;
+  if (!confirm(`Excluir a lista "${card.title}"?`)) return;
+  try {
+    await api.delete(`/api/cards/${card.id}`);
+    $('#listaModal').classList.add('hidden');
+    state.listaCard = null;
+    await loadBoard(state.currentBoardId);
+  } catch {
+    alert('Falha ao excluir.');
+  }
 }
 
 // ============ WIZARD: NEW BOARD ============
@@ -1737,24 +2152,24 @@ async function checkWhatsNew() {
     const res = await request('/api/version');
     if (!res.ok) return;
     const { current, releases } = await res.json();
-    if (!current || !Array.isArray(releases)) return;
+    if (!current || !Array.isArray(releases) || releases.length === 0) return;
+
+    // Surface the version in the sidebar (under the "Reportar bug" button)
+    const versionEl = $('#sidebarVersion');
+    if (versionEl) versionEl.textContent = `v${current}`;
 
     const seen = localStorage.getItem(SEEN_VERSION_KEY);
-    if (seen === current) return;
-
-    // Show every release newer than what they last saw. We compare by string
-    // identity since we control the version values; for proper semver ordering
-    // a parse would be needed, but the array is already in newest-first order.
-    // First-time visitors (seen=null) get the full list — they're seeing the
-    // app's "what's new" for the first time.
-    const seenIdx = seen ? releases.findIndex(r => r.version === seen) : -1;
-    const newReleases = seenIdx === -1 ? releases : releases.slice(0, seenIdx);
-    if (newReleases.length === 0) {
+    // First-time visitor: silently mark current as seen, don't bother them.
+    if (!seen) {
       localStorage.setItem(SEEN_VERSION_KEY, current);
       return;
     }
+    // Already saw this version: nothing to show.
+    if (seen === current) return;
 
-    showWhatsNewModal(current, newReleases);
+    // Otherwise show ONLY the latest release. We don't backfill older releases
+    // they might have missed — keeps the modal short and never repetitive.
+    showWhatsNewModal(current, [releases[0]]);
   } catch (err) {
     // Silent failure — version check is best-effort, never blocks the app.
     console.warn('Falha ao checar novidades', err);
@@ -1772,10 +2187,18 @@ function showWhatsNewModal(current, newReleases) {
     </div>
   `).join('');
   $('#whatsNewContent').innerHTML = html;
-  $('#whatsNewModal').classList.remove('hidden');
-  $('#whatsNewOkBtn').onclick = () => {
-    localStorage.setItem(SEEN_VERSION_KEY, current);
-    closeAllModals();
+
+  // Mark as seen no matter HOW the modal is dismissed (OK button, X close,
+  // backdrop click). We attach once per show; the listeners pull from the DOM.
+  const markSeen = () => localStorage.setItem(SEEN_VERSION_KEY, current);
+  const modal = $('#whatsNewModal');
+  modal.classList.remove('hidden');
+
+  $('#whatsNewOkBtn').onclick = () => { markSeen(); closeAllModals(); };
+  modal.querySelector('.modal-close').onclick = () => { markSeen(); closeAllModals(); };
+  modal.onclick = (e) => {
+    // Click on the backdrop (outside .modal) also dismisses + marks seen
+    if (e.target === modal) { markSeen(); closeAllModals(); }
   };
 }
 
@@ -1868,6 +2291,53 @@ function setupEventListeners() {
   // Card modal
   $('#cardForm').addEventListener('submit', saveCard);
   $('#cardDeleteBtn').addEventListener('click', deleteCard);
+
+  // Checklist (event delegation on the list — items are dynamic)
+  $('#checklistList').addEventListener('click', (e) => {
+    const li = e.target.closest('.checklist-item');
+    if (!li) return;
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (!action) return;
+    const itemId = parseInt(li.dataset.itemId);
+    if (action === 'toggle') checklistToggleItem(itemId);
+    else if (action === 'edit')   checklistEditItem(itemId);
+    else if (action === 'delete') checklistDeleteItem(itemId);
+    else if (action === 'up')     checklistMoveItem(itemId, -1);
+    else if (action === 'down')   checklistMoveItem(itemId, +1);
+  });
+  $('#checklistAddBtn').addEventListener('click', () => {
+    $('#checklistInputRow').classList.remove('hidden');
+    $('#checklistInput').focus();
+  });
+  // Submit via button OR Enter key (we can't use a real <form> here because
+  // this row sits inside the card modal's <form>, and forms can't nest).
+  const checklistConfirm = async () => {
+    const input = $('#checklistInput');
+    const text = input.value.trim();
+    if (!text) return;
+    await checklistAddItem(text);
+    input.value = '';
+    input.focus();
+  };
+  $('#checklistConfirmBtn').addEventListener('click', checklistConfirm);
+  $('#checklistInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      checklistConfirm();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      $('#checklistInput').value = '';
+      $('#checklistInputRow').classList.add('hidden');
+    }
+  });
+  $('#checklistCancelBtn').addEventListener('click', () => {
+    $('#checklistInput').value = '';
+    $('#checklistInputRow').classList.add('hidden');
+  });
+
+  // Lista modal (dedicated lista view, separate from Editar Card)
+  $$('[data-close-lista]').forEach(b => b.addEventListener('click', closeListaView));
+  $('#listaDeleteCardBtn').addEventListener('click', deleteListaCard);
 
   // Board ops
   $('#renameBoardBtn').addEventListener('click', async () => {

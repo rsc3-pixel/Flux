@@ -75,6 +75,42 @@ MeuTrello/                  # folder ainda se chama assim, produto = Flux
 - Renomeado de "MeuTrello" → **"Flux"** (folder mantida)
 - Logo SVG geométrica feita em `public/flux-logo.svg` (3 setas formando F) + versão compacta `flux-mark.svg` pra favicon
 
+### Iter 4 — Checklist + categoria LISTA (v1.2.0, 2026-04-26)
+- **Tabela `checklist_items`** (id, card_id, text, completed, position, created_at) com FK CASCADE em cards
+- **Categoria `lista`** adicionada à whitelist de categorias (cor `#059669` verde-esmeralda)
+- **API**: 4 endpoints novos
+  - `POST /api/cards/:id/checklist` — adiciona item
+  - `PATCH /api/checklist/:itemId` — toggle ou edita texto
+  - `DELETE /api/checklist/:itemId` — remove
+  - `PATCH /api/cards/:id/checklist/reorder` — reordena (transação)
+- **Activity log**: registra `checklist.item_added` e `checklist.item_removed` (toggle NÃO loga — alta frequência, baixo valor)
+- **GET /api/boards/:id**: agora traz `checklist_items` aninhado em cada card
+
+#### UX por categoria
+| Categoria | Como o checklist aparece |
+|---|---|
+| Qualquer outra | Badge `☑ 2/5` no card preview; checklist editado dentro do **modal Editar Card** |
+| **LISTA** | Card mostra **preview read-only** (linhas com checkbox visual ✓ / texto riscado); click no card abre o **modal Lista dedicado** (`#listaModal`) — separado do modal Editar Card |
+
+#### Modal Lista dedicado (estilo Samsung Notes)
+- Header: input grande com título editável + botão X
+- Body: items como `<checkbox + input>` rows; sempre uma linha "Adicionar item..." no fim (buffer)
+- Footer: "Excluir lista" (esquerda) / "Concluir" (direita)
+- **Atalhos**: Enter na buffer cria item e mantém foco (rapid-fire); Backspace em texto vazio deleta o item; Enter no título pula pro primeiro item
+- Auto-foco na buffer ao abrir
+- Fecha (X / Concluir / click fora) → blur dispara save pendente + recarrega o board
+- **Por que separado do modal Editar Card**: tentamos editar inline no card (no quadro) e em modal compartilhado, ambos brigaram com Sortable.js (drag&drop intercepta clicks/touchs em inputs). Modal dedicado é a única abordagem que isola a edição do drag.
+
+### Versão na sidebar
+- Texto "vX.Y.Z" em cinza claro abaixo do botão "Reportar bug"
+- Populado pelo `checkWhatsNew()` que já consultava `/api/version`
+
+### What's New behavior (v1.2.0+)
+Antes mostrava todo o histórico e não marcava como visto se fechado pelo X. Agora:
+- **Primeira visita** (sem `mt_seen_version` no localStorage): silenciosamente marca como visto, NÃO mostra modal
+- **Versão nova publicada**: mostra **só** o release mais recente (não backfill)
+- **Qualquer forma de fechar** (OK / X / click no backdrop): marca como visto. Não aparece de novo até a próxima versão.
+
 ### Segurança (já blindado)
 - bcrypt cost 10 + dummy verify pra timing-safe
 - Rate limit 5/15min em login/register

@@ -12,6 +12,15 @@
 
 const releases = [
   {
+    version: '1.2.0',
+    date: '2026-04-26',
+    notes: [
+      '✅ Checklist nos cards — adicione subtarefas/itens em qualquer card, marque como feito e acompanhe o progresso. Perfeito pra lista de compras, passos de uma tarefa ou subtarefas',
+      '🟢 Nova categoria LISTA — cor verde-esmeralda pra quando o card é uma lista de itens (ex.: lista de mercado)',
+      '📊 Progresso no card — quando o card tem checklist, o quadro mostra um indicador "2/5 ✓" pra você ver o avanço sem abrir',
+    ],
+  },
+  {
     version: '1.1.3',
     date: '2026-04-26',
     notes: [

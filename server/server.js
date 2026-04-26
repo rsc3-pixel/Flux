@@ -57,7 +57,7 @@ const PRIORITY_VALUES = new Set(['baixa', 'media', 'alta']);
 const ROLE_VALUES = new Set(['admin', 'membro']);
 const CATEGORY_VALUES = new Set([
   'design-system', 'critico', 'pesquisa', 'feature',
-  'documentacao', 'bug', 'ui-design',
+  'documentacao', 'bug', 'ui-design', 'lista',
 ]);
 const DATE_RE  = /^\d{4}-\d{2}-\d{2}$/;
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -280,7 +280,13 @@ app.get('/api/boards/:id', (req, res) => {
 
   const lists = db.prepare('SELECT * FROM lists WHERE board_id = ? ORDER BY position').all(board.id);
   const cardStmt = db.prepare('SELECT * FROM cards WHERE list_id = ? ORDER BY position');
-  for (const list of lists) list.cards = cardStmt.all(list.id);
+  const checklistStmt = db.prepare('SELECT * FROM checklist_items WHERE card_id = ? ORDER BY position, id');
+  for (const list of lists) {
+    list.cards = cardStmt.all(list.id);
+    for (const card of list.cards) {
+      card.checklist_items = checklistStmt.all(card.id);
+    }
+  }
 
   board.lists = lists;
   board.role = auth.getBoardRole(req.user.id, id);
@@ -502,6 +508,123 @@ app.post('/api/cards/reorder', (req, res) => {
   }
   const stmt = db.prepare('UPDATE cards SET list_id = ?, position = ? WHERE id = ?');
   db.transaction((arr) => { for (const u of arr) stmt.run(u.list_id, u.position, u.id); })(updates);
+  res.json({ ok: true });
+});
+
+// =================================================================
+// CHECKLIST ITEMS
+// =================================================================
+// Resolve a checklist item with its parent card + board (single join, used by
+// PATCH/DELETE for both ownership check and activity logging).
+function getChecklistItemContext(itemId) {
+  return db.prepare(`
+    SELECT ci.id, ci.card_id, ci.text, ci.completed, ci.position,
+           c.title AS card_title, l.board_id
+    FROM checklist_items ci
+    JOIN cards c ON c.id = ci.card_id
+    JOIN lists l ON l.id = c.list_id
+    WHERE ci.id = ?
+  `).get(itemId);
+}
+
+app.post('/api/cards/:id/checklist', (req, res) => {
+  const cardId = parseInt(req.params.id);
+  const boardId = auth.boardIdFromCard(cardId);
+  if (!boardId) return res.status(404).json({ error: 'Card não encontrado' });
+  if (!auth.canEdit(req.user.id, boardId))
+    return res.status(403).json({ error: 'Sem permissão' });
+
+  const { text } = req.body || {};
+  if (typeof text !== 'string' || !text.trim())
+    return res.status(400).json({ error: 'Texto obrigatório' });
+  if (text.length > 500)
+    return res.status(400).json({ error: 'Texto muito longo (máx 500 caracteres)' });
+
+  const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM checklist_items WHERE card_id = ?')
+                   .get(cardId).p;
+  const info = db.prepare('INSERT INTO checklist_items (card_id, text, position) VALUES (?, ?, ?)')
+                 .run(cardId, text.trim().slice(0, 500), maxPos + 1);
+  const item = db.prepare('SELECT * FROM checklist_items WHERE id = ?').get(info.lastInsertRowid);
+  const cardTitle = db.prepare('SELECT title FROM cards WHERE id = ?').get(cardId)?.title;
+  logBoardActivity(req, 'checklist.item_added', boardId, 'checklist_item', item.id,
+    { text: item.text, card: cardTitle, card_id: cardId });
+  res.status(201).json(item);
+});
+
+// PATCH text or completed flag. Toggle-only updates intentionally do NOT log
+// activity (would be too noisy on a shopping-list use case).
+app.patch('/api/checklist/:itemId', (req, res) => {
+  const itemId = parseInt(req.params.itemId);
+  const ctx = getChecklistItemContext(itemId);
+  if (!ctx) return res.status(404).json({ error: 'Item não encontrado' });
+  if (!auth.canEdit(req.user.id, ctx.board_id))
+    return res.status(403).json({ error: 'Sem permissão' });
+
+  const { text, completed } = req.body || {};
+  let newText = null, newCompleted = null;
+  if (text !== undefined) {
+    if (typeof text !== 'string' || !text.trim())
+      return res.status(400).json({ error: 'Texto inválido' });
+    if (text.length > 500)
+      return res.status(400).json({ error: 'Texto muito longo (máx 500 caracteres)' });
+    newText = text.trim().slice(0, 500);
+  }
+  if (completed !== undefined) {
+    if (typeof completed !== 'boolean')
+      return res.status(400).json({ error: 'completed deve ser boolean' });
+    newCompleted = completed ? 1 : 0;
+  }
+  if (newText === null && newCompleted === null)
+    return res.status(400).json({ error: 'Nada para atualizar' });
+
+  db.prepare(`
+    UPDATE checklist_items SET
+      text      = COALESCE(?, text),
+      completed = COALESCE(?, completed)
+    WHERE id = ?
+  `).run(newText, newCompleted, itemId);
+
+  res.json(db.prepare('SELECT * FROM checklist_items WHERE id = ?').get(itemId));
+});
+
+app.delete('/api/checklist/:itemId', (req, res) => {
+  const itemId = parseInt(req.params.itemId);
+  const ctx = getChecklistItemContext(itemId);
+  if (!ctx) return res.status(404).json({ error: 'Item não encontrado' });
+  if (!auth.canEdit(req.user.id, ctx.board_id))
+    return res.status(403).json({ error: 'Sem permissão' });
+
+  db.prepare('DELETE FROM checklist_items WHERE id = ?').run(itemId);
+  logBoardActivity(req, 'checklist.item_removed', ctx.board_id, 'checklist_item', itemId,
+    { text: ctx.text, card: ctx.card_title, card_id: ctx.card_id });
+  res.status(204).end();
+});
+
+app.patch('/api/cards/:id/checklist/reorder', (req, res) => {
+  const cardId = parseInt(req.params.id);
+  const boardId = auth.boardIdFromCard(cardId);
+  if (!boardId) return res.status(404).json({ error: 'Card não encontrado' });
+  if (!auth.canEdit(req.user.id, boardId))
+    return res.status(403).json({ error: 'Sem permissão' });
+
+  const { ids } = req.body || {};
+  if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids deve ser array' });
+  if (ids.length === 0) return res.json({ ok: true });
+  if (!ids.every(n => Number.isInteger(n)))
+    return res.status(400).json({ error: 'ids deve conter inteiros' });
+
+  // Reject if any provided id doesn't belong to this card (prevents shuffling
+  // someone else's items via a card you can edit).
+  const placeholders = ids.map(() => '?').join(',');
+  const ownCount = db.prepare(`
+    SELECT COUNT(*) AS c FROM checklist_items WHERE card_id = ? AND id IN (${placeholders})
+  `).get(cardId, ...ids).c;
+  if (ownCount !== ids.length)
+    return res.status(400).json({ error: 'Item fora do card informado' });
+
+  const stmt = db.prepare('UPDATE checklist_items SET position = ? WHERE id = ?');
+  db.transaction(() => { ids.forEach((id, i) => stmt.run(i, id)); })();
+
   res.json({ ok: true });
 });
 
