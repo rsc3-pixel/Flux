@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const db = require('./db');
 const auth = require('./auth');
+const version = require('./version');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,6 +25,15 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+});
+
+// Rate limiter for bug reports (3 / hour per IP) — defense against spam
+const bugReportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Muitos reports. Tente novamente em 1 hora.' },
 });
 
 // ---- Input validation helpers ----
@@ -67,6 +77,12 @@ app.get('/api/config', (_req, res) => {
     // otherwise honor the ALLOW_REGISTRATION env var (default on).
     registrationEnabled: userCount === 0 || process.env.ALLOW_REGISTRATION !== 'false',
   });
+});
+
+// Public version endpoint — frontend compares with localStorage to decide
+// whether to show the "Novidades" modal.
+app.get('/api/version', (_req, res) => {
+  res.json({ current: version.current, releases: version.releases });
 });
 
 app.post('/api/auth/register', authLimiter, (req, res) => {
@@ -165,6 +181,65 @@ app.get('/api/invites/:token', (req, res) => {
 // All routes below require authentication
 // =================================================================
 app.use('/api', auth.requireAuth);
+
+// =================================================================
+// BUG REPORTS
+// =================================================================
+app.post('/api/report-bug', bugReportLimiter, async (req, res) => {
+  const { description, url } = req.body || {};
+
+  if (typeof description !== 'string' || !description.trim()) {
+    return res.status(400).json({ error: 'Descrição é obrigatória' });
+  }
+  if (description.length > 2000) {
+    return res.status(400).json({ error: 'Descrição muito longa (máx 2000 caracteres)' });
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    console.error('Bug report received but RESEND_API_KEY not configured');
+    return res.status(503).json({ error: 'Sistema de envio de bugs indisponível no momento' });
+  }
+
+  const userAgent = req.get('User-Agent') || '(unknown)';
+  const reportUrl = typeof url === 'string' && url.length < 500 ? url : '(unknown)';
+  const subject = `[Flux Bug] ${req.user.name}: ${description.trim().slice(0, 60)}`;
+  const emailBody = [
+    `From: ${req.user.name} <${req.user.email}> (id ${req.user.id})`,
+    `URL: ${reportUrl}`,
+    `User-Agent: ${userAgent}`,
+    `Time: ${new Date().toISOString()}`,
+    '',
+    '--- Description ---',
+    description.trim(),
+  ].join('\n');
+
+  try {
+    const resendRes = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Flux Bug Report <onboarding@resend.dev>',
+        to: process.env.BUG_REPORT_TO || 'chongrenato@gmail.com',
+        subject,
+        text: emailBody,
+      }),
+    });
+
+    if (!resendRes.ok) {
+      const errText = await resendRes.text().catch(() => '(no body)');
+      console.error('Resend API error', resendRes.status, errText);
+      return res.status(502).json({ error: 'Falha ao enviar bug. Tente novamente.' });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Bug report send failed', err);
+    res.status(502).json({ error: 'Falha ao enviar bug. Tente novamente.' });
+  }
+});
 
 // =================================================================
 // BOARDS

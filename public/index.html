@@ -82,6 +82,7 @@
         <nav class="ws-nav">
           <button class="ws-nav-item" data-view="activity"  data-icon="bell"        data-anim="wiggle">Atividade</button>
           <button class="ws-nav-item" data-view="analytics" data-icon="bar-chart-3" data-anim="bounce">Analytics</button>
+          <button class="ws-nav-item" id="reportBugBtn"     data-icon="bug"         data-anim="shake">Reportar bug</button>
         </nav>
       </div>
     </aside>
@@ -596,6 +597,51 @@
         <h4 class="section-title">Membros atuais</h4>
         <div id="membersList" class="members-list"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: what's new (release notes) -->
+  <div class="modal-backdrop hidden" id="whatsNewModal">
+    <div class="modal">
+      <header class="modal-header">
+        <h3>
+          Novidades
+          <span class="whats-new-version" id="whatsNewVersion"></span>
+        </h3>
+        <button class="modal-close" data-close data-icon="x" data-icon-only="true" data-anim="pop" aria-label="Fechar"></button>
+      </header>
+      <div class="modal-body">
+        <p class="form-help">Veja o que mudou nesta atualização:</p>
+        <div id="whatsNewContent"></div>
+        <footer class="modal-footer">
+          <div class="footer-right">
+            <button type="button" class="btn btn-primary" id="whatsNewOkBtn">Entendi</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: report a bug -->
+  <div class="modal-backdrop hidden" id="bugModal">
+    <div class="modal">
+      <header class="modal-header">
+        <h3>Reportar bug</h3>
+        <button class="modal-close" data-close data-icon="x" data-icon-only="true" data-anim="pop" aria-label="Fechar"></button>
+      </header>
+      <form id="bugForm" class="modal-body">
+        <p class="form-help">Descreva o problema que você encontrou. Inclua o que estava fazendo quando aconteceu — quanto mais detalhes, melhor.</p>
+        <label>Descrição
+          <textarea id="bugDescription" rows="6" required maxlength="2000" placeholder="Ex: ao clicar em 'Salvar' no card, a página congelou e não consegui continuar..."></textarea>
+        </label>
+        <div id="bugStatus" class="bug-status hidden"></div>
+        <footer class="modal-footer">
+          <div class="footer-right">
+            <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary" id="bugSubmitBtn">Enviar</button>
+          </div>
+        </footer>
+      </form>
     </div>
   </div>
 

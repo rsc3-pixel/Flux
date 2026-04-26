@@ -60,6 +60,7 @@ const ICONS = {
   'bell':              '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
   'activity':          '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
   'box':               '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  'bug':               '<path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/>',
 };
 
 function svgIcon(name) {
@@ -204,6 +205,7 @@ async function afterLogin() {
   }
 
   await init();
+  checkWhatsNew();
 }
 
 function clearInviteFromUrl() {
@@ -1676,6 +1678,113 @@ function closeAllModals() {
   $('#columnsMenu')?.classList.add('hidden');
 }
 
+// ============ BUG REPORT ============
+function openBugModal() {
+  $('#bugDescription').value = '';
+  const status = $('#bugStatus');
+  status.classList.add('hidden');
+  status.textContent = '';
+  status.classList.remove('error', 'success');
+  $('#bugSubmitBtn').disabled = false;
+  $('#bugSubmitBtn').textContent = 'Enviar';
+  $('#bugModal').classList.remove('hidden');
+  setTimeout(() => $('#bugDescription').focus(), 50);
+}
+
+async function submitBugReport(e) {
+  e.preventDefault();
+  const description = $('#bugDescription').value.trim();
+  const status = $('#bugStatus');
+  const submitBtn = $('#bugSubmitBtn');
+
+  if (!description) return;
+
+  status.classList.remove('hidden', 'error', 'success');
+  status.textContent = 'Enviando...';
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Enviando...';
+
+  try {
+    const res = await request('/api/report-bug', {
+      method: 'POST',
+      body: JSON.stringify({ description, url: location.href }),
+    });
+    if (res.ok) {
+      status.classList.add('success');
+      status.textContent = '✓ Bug enviado, obrigado pelo feedback!';
+      submitBtn.textContent = 'Enviado';
+      setTimeout(closeAllModals, 1800);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      status.classList.add('error');
+      status.textContent = data.error || 'Erro ao enviar. Tente novamente.';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Enviar';
+    }
+  } catch (err) {
+    status.classList.add('error');
+    status.textContent = 'Falha de conexão. Tente novamente.';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Enviar';
+  }
+}
+
+// ============ WHAT'S NEW ============
+const SEEN_VERSION_KEY = 'mt_last_seen_version';
+
+async function checkWhatsNew() {
+  try {
+    const res = await request('/api/version');
+    if (!res.ok) return;
+    const { current, releases } = await res.json();
+    if (!current || !Array.isArray(releases)) return;
+
+    const seen = localStorage.getItem(SEEN_VERSION_KEY);
+
+    // First-time user: silently mark current version as seen so we don't
+    // pop the modal on someone who never saw older releases.
+    if (!seen) {
+      localStorage.setItem(SEEN_VERSION_KEY, current);
+      return;
+    }
+
+    if (seen === current) return;
+
+    // Show every release newer than what they last saw. We compare by string
+    // identity since we control the version values; for proper semver ordering
+    // a parse would be needed, but the array is already in newest-first order.
+    const seenIdx = releases.findIndex(r => r.version === seen);
+    const newReleases = seenIdx === -1 ? releases : releases.slice(0, seenIdx);
+    if (newReleases.length === 0) {
+      localStorage.setItem(SEEN_VERSION_KEY, current);
+      return;
+    }
+
+    showWhatsNewModal(current, newReleases);
+  } catch (err) {
+    // Silent failure — version check is best-effort, never blocks the app.
+    console.warn('Falha ao checar novidades', err);
+  }
+}
+
+function showWhatsNewModal(current, newReleases) {
+  $('#whatsNewVersion').textContent = `v${current}`;
+  const html = newReleases.map(r => `
+    <div class="whats-new-release">
+      <strong>v${escapeHtml(r.version)}</strong>${r.date ? ` <span class="whats-new-date">— ${escapeHtml(r.date)}</span>` : ''}
+      <ul class="whats-new-list">
+        ${r.notes.map(n => `<li>${escapeHtml(n)}</li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+  $('#whatsNewContent').innerHTML = html;
+  $('#whatsNewModal').classList.remove('hidden');
+  $('#whatsNewOkBtn').onclick = () => {
+    localStorage.setItem(SEEN_VERSION_KEY, current);
+    closeAllModals();
+  };
+}
+
 // ============ SETTINGS ============
 function renderSettings() {
   // Reflect persisted state in the form controls
@@ -1879,15 +1988,21 @@ function setupEventListeners() {
     }
   }));
 
-  // Workspace nav (sidebar) — same toggle behavior
+  // Workspace nav (sidebar) — same toggle behavior. Skip action buttons that
+  // don't have a data-view (e.g. "Reportar bug" opens a modal instead).
   $$('.ws-nav-item').forEach(t => t.addEventListener('click', () => {
     const target = t.dataset.view;
+    if (!target) return;
     if (state.view === target && WORKSPACE_VIEWS.has(target)) {
       switchView(state.lastBoardView || 'kanban');
     } else {
       switchView(target);
     }
   }));
+
+  // Bug report modal
+  $('#reportBugBtn')?.addEventListener('click', openBugModal);
+  $('#bugForm')?.addEventListener('submit', submitBugReport);
 
   // Refresh button on Activity view
   $('#refreshActivityBtn')?.addEventListener('click', renderActivity);
