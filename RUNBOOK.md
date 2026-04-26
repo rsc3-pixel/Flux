@@ -165,7 +165,65 @@ sudo reboot
 
 ---
 
-## 💾 Backup manual do banco
+## 💾 Backup automático (Cloud Storage)
+
+Configurado em **2026-04-26**. Roda todo dia às **03:00 UTC (00:00 Brasília)** via cron, salva no bucket `gs://flux-backups-rsc3`, mantém os últimos 30 dias.
+
+### Listar backups disponíveis
+
+```bash
+gcloud storage ls gs://flux-backups-rsc3/
+```
+
+### Forçar backup manual agora
+
+```bash
+/usr/local/bin/flux-backup.sh
+```
+
+### Ver logs do cron
+
+```bash
+tail -50 /var/log/flux-backup.log
+```
+
+### Restaurar um backup
+
+```bash
+# 1. Baixar backup desejado pra VM
+gcloud storage cp gs://flux-backups-rsc3/database-2026-04-27.sqlite /tmp/restore.sqlite
+
+# 2. Parar Flux pra liberar lock no DB
+pm2 stop flux
+
+# 3. Substituir banco em uso
+cp /tmp/restore.sqlite /var/lib/flux/database.sqlite
+
+# 4. Reiniciar Flux
+pm2 start flux
+```
+
+### Onde fica a config
+
+| Item | Caminho |
+|---|---|
+| Script de backup | `/usr/local/bin/flux-backup.sh` |
+| Cron job | `/etc/cron.d/flux-backup` |
+| Log | `/var/log/flux-backup.log` |
+| Bucket | `gs://flux-backups-rsc3` |
+| Retenção | 30 dias (configurada no script) |
+
+### Onde editar a retenção
+
+Edita a linha `RETENTION_DAYS=30` em `/usr/local/bin/flux-backup.sh`:
+
+```bash
+sudo nano /usr/local/bin/flux-backup.sh
+```
+
+---
+
+## 💾 Backup manual do banco (alternativo)
 
 ### Copiar banco pra local seguro na VM
 
