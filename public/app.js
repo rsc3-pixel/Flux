@@ -1740,20 +1740,14 @@ async function checkWhatsNew() {
     if (!current || !Array.isArray(releases)) return;
 
     const seen = localStorage.getItem(SEEN_VERSION_KEY);
-
-    // First-time user: silently mark current version as seen so we don't
-    // pop the modal on someone who never saw older releases.
-    if (!seen) {
-      localStorage.setItem(SEEN_VERSION_KEY, current);
-      return;
-    }
-
     if (seen === current) return;
 
     // Show every release newer than what they last saw. We compare by string
     // identity since we control the version values; for proper semver ordering
     // a parse would be needed, but the array is already in newest-first order.
-    const seenIdx = releases.findIndex(r => r.version === seen);
+    // First-time visitors (seen=null) get the full list — they're seeing the
+    // app's "what's new" for the first time.
+    const seenIdx = seen ? releases.findIndex(r => r.version === seen) : -1;
     const newReleases = seenIdx === -1 ? releases : releases.slice(0, seenIdx);
     if (newReleases.length === 0) {
       localStorage.setItem(SEEN_VERSION_KEY, current);

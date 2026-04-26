@@ -12,6 +12,14 @@
 
 const releases = [
   {
+    version: '1.1.1',
+    date: '2026-04-26',
+    notes: [
+      '🔧 Corrige modal "Novidades" que não aparecia na primeira vez',
+      '🔒 Reconhecimento correto do IP atrás do proxy (rate limit mais robusto)',
+    ],
+  },
+  {
     version: '1.1.0',
     date: '2026-04-26',
     notes: [

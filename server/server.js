@@ -9,6 +9,11 @@ const version = require('./version');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// We sit behind nginx as a reverse proxy, which sets X-Forwarded-For with the
+// real client IP. Tell Express to trust exactly one hop so req.ip reflects the
+// actual user (not 127.0.0.1), which makes express-rate-limit count correctly.
+app.set('trust proxy', 1);
+
 // CORS intentionally NOT enabled: the front-end is served by this same Express
 // app, so all requests are same-origin. Allowing CORS with credentials would
 // open the door to CSRF and credentialed cross-origin data theft.
