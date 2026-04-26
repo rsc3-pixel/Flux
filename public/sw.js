@@ -1,9 +1,17 @@
-// Flux service worker — minimal "app-shell" caching strategy.
-// - Static files (HTML/CSS/JS/SVG): cache-first, network fallback
-// - API calls: always network, never cached (data must be fresh)
-// - Bumps the cache name to invalidate everything on each release
+// Flux service worker — app-shell caching strategy.
+// - Critical shell (HTML/CSS/JS): NETWORK-FIRST so updates roll out on next visit.
+//   Falls back to cached copy when offline. Avoids the "users stuck on old
+//   version after deploy" problem that plagued early versions.
+// - Static assets (logos, vendor): cache-first, network fallback (these change
+//   rarely; serving from cache is faster).
+// - API calls: always network, never cached (data must be fresh).
+// - Cache name is bumped on every release to evict stale entries on activate.
 
-const CACHE = 'flux-v2';
+// IMPORTANT: bump this string on every release that changes index.html,
+// app.js or styles.css. Otherwise the previous cache silently keeps serving
+// the old shell on every device that has an existing SW installed (PWAs and
+// repeat browser visits). Pattern: 'flux-v<package.json-version>'.
+const CACHE = 'flux-v1.1.2';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -29,21 +37,39 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Critical shell paths use network-first so deploys propagate immediately.
+const SHELL_CRITICAL = new Set(['/', '/index.html', '/app.js', '/styles.css']);
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
   // Never cache API requests — always go to the network so data stays fresh.
   if (url.pathname.startsWith('/api/')) return;
 
-  // Only cache same-origin GETs (don't touch DiceBear/Google Fonts requests
+  // Only handle same-origin GETs (don't touch DiceBear/Google Fonts requests
   // — those have their own CDN caching headers).
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
+  // Strategy A — network-first for the critical shell. Falls back to cache
+  // when offline. This is what guarantees a fresh app on each visit.
+  if (SHELL_CRITICAL.has(url.pathname)) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      }).catch(() => caches.match(event.request).then((c) => c || caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // Strategy B — cache-first for static assets that rarely change.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request).then((response) => {
-        // Don't cache non-2xx responses
         if (!response.ok) return response;
         const copy = response.clone();
         caches.open(CACHE).then((cache) => cache.put(event.request, copy));

@@ -96,11 +96,22 @@ Toda atualização do app deve ter uma entrada nova em [server/version.js](serve
      ],
    },
    ```
-4. **Commit + push** no GitHub.
-5. **Na VM**: `cd ~/Flux && git pull && pm2 restart flux`.
-6. Quando o usuário fizer login (ou abrir o app numa sessão já ativa), o modal aparece sozinho e marca a versão como vista no `localStorage`. Não vai aparecer de novo até a próxima atualização.
+4. **Se a release mexeu em `index.html`, `app.js` ou `styles.css`**, atualize também `public/sw.js` na linha do `const CACHE = 'flux-v...'` pra refletir a nova versão (ex: `'flux-v1.2.0'`). Sem isso, o service worker continua servindo o shell antigo nos celulares que já têm o app instalado.
+5. **Commit + push** no GitHub.
+6. **Na VM**: `cd ~/Flux && git pull && pm2 restart flux`.
+7. Quando o usuário fizer login (ou abrir o app numa sessão já ativa), o modal aparece sozinho e marca a versão como vista no `localStorage`. Não vai aparecer de novo até a próxima atualização.
 
-> Use emojis no início de cada nota pra deixar visual: ✨ feature, 🐛 fix, 🔧 melhoria, 🔒 segurança, ⚡ performance.
+> Use emojis no início de cada nota pra deixar visual: ✨ feature, 🐛 fix, 🔧 melhoria, 🔒 segurança, ⚡ performance, 📱 mobile.
+
+### Service worker — gotcha de cache no mobile
+
+Desde v1.1.2 o SW usa **network-first pros arquivos críticos** (HTML/CSS/JS), então atualizações chegam logo na próxima visita. Mas o **nome do cache** ainda funciona como "selo": se você esquecer de bumpar a string `CACHE` em `public/sw.js`, o SW antigo continua usando a mesma "caixa" de cache e pode servir uma versão obsoleta de assets secundários (logos, vendor) por algum tempo. Sempre bumpa o `CACHE` junto com a versão.
+
+Se um usuário disser "tá vendo a versão antiga no celular", primeiro pede pra ele:
+
+1. Recarregar a página.
+2. Se persistir: limpar dados do site (Chrome mobile → menu do site → "Limpar dados").
+3. Se ele tem o PWA instalado: desinstala e reinstala.
 
 ---
 

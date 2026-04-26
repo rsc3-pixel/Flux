@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.1.2',
+    date: '2026-04-26',
+    notes: [
+      '📱 Atualizações agora chegam no celular sem precisar reinstalar — service worker passou a usar estratégia network-first pra carregar a versão mais nova',
+    ],
+  },
+  {
     version: '1.1.1',
     date: '2026-04-26',
     notes: [

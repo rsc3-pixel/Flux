@@ -21,6 +21,17 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 app.use(auth.loadUser); // populates req.user if session cookie is valid
+
+// The service worker MUST never be cached by the browser. If it is, deploys
+// don't propagate: the browser keeps using the old SW (and its old shell
+// cache) until the cached SW expires. no-store forces revalidation on every
+// page load, which is the only path that lets a new SW take over.
+app.use('/sw.js', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Rate limiter for auth endpoints (5 attempts / 15 min per IP)
