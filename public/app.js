@@ -2044,11 +2044,35 @@ function setupEventListeners() {
 
 // Register service worker so the app is installable as a PWA + works
 // (partially) offline. Only runs over HTTPS or on localhost.
+//
+// Update strategy: when a new SW takes control of an *existing* page (i.e.
+// the user already had a SW installed), reload once so the freshly-cached
+// shell loads. This avoids the "stuck on old version" problem on devices
+// where the user installed the PWA before a deploy.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+
+      // Snapshot whether there was already a controller. If yes, any later
+      // controllerchange means we just got an update — safe to reload. If
+      // no, this is a first install on a fresh device and reloading would
+      // be a wasteful flicker.
+      const hadController = Boolean(navigator.serviceWorker.controller);
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing || !hadController) return;
+        refreshing = true;
+        window.location.reload();
+      });
+
+      // Force an explicit update check on every page load. Combined with
+      // Cache-Control: no-store on /sw.js (set by the server), this turns
+      // the browser's normally-lazy 24h SW revalidation into "always check".
+      reg.update().catch(() => { /* offline is fine */ });
+    } catch (err) {
       console.warn('[sw] registration failed:', err);
-    });
+    }
   });
 }
 

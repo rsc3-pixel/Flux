@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.1.3',
+    date: '2026-04-26',
+    notes: [
+      '⚡ App agora atualiza sozinho — quando uma versão nova é publicada, o app recarrega automaticamente sem você precisar fazer nada',
+    ],
+  },
+  {
     version: '1.1.2',
     date: '2026-04-26',
     notes: [
