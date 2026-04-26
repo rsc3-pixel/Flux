@@ -37,6 +37,7 @@ MeuTrello/                  # folder ainda se chama assim, produto = Flux
 ├── Dockerfile              # Node 20-bookworm-slim, multi-step com build deps (opcional, pra container)
 ├── .dockerignore
 ├── package.json
+├── RUNBOOK.md              # manual operacional (SSH, deploy, backup, troubleshooting)
 └── CLAUDE.md               # este arquivo
 ```
 
@@ -94,22 +95,49 @@ MeuTrello/                  # folder ainda se chama assim, produto = Flux
 
 ---
 
-## Status atual: deploy em GCP Compute Engine (em andamento)
+## Status atual: ✅ DEPLOYED AND LIVE em produção (2026-04-26)
 
-**Plataforma escolhida: Google Cloud Compute Engine (free tier, e2-micro, us-west1-a, Ubuntu 24.04).**
+**URL:** **https://rsc3-flux.duckdns.org**
 
-Fly.io foi descartado (user achou complexo / preferiu free tier). Arquivos `fly.toml` foram removidos do repo. Repo público: https://github.com/rsc3-pixel/Flux
+Repo público: https://github.com/rsc3-pixel/Flux
 
-### Como o deploy é feito (passo a passo na VM)
+> Manual operacional completo está em **[RUNBOOK.md](RUNBOOK.md)** — leia antes de operar a VM. Tudo abaixo é só o panorama; o RUNBOOK tem comandos prontos.
 
-1. SSH via `gcloud compute ssh flux --zone=us-west1-a` (do PowerShell local). SSH no navegador do GCP exigiu habilitar a Cloud IAP API + criar regra de firewall pra range `35.235.240.0/20` na porta 22, mas mesmo assim ficou instável — gcloud CLI é mais confiável.
-2. Instalar Node 20 + git + build-essential.
-3. Clonar repo, `npm install --omit=dev`.
-4. Pasta de dados em `/var/lib/flux` (fora do repo, sobrevive a `git pull`).
-5. Rodar com PM2: `DATA_DIR=/var/lib/flux NODE_ENV=production PORT=3000 pm2 start server/server.js --name flux`.
-6. `pm2 save && pm2 startup` pra subir junto com a VM.
-7. Liberar porta no firewall do GCP (regra ingress TCP:3000 ou usar nginx + porta 80/443).
-8. Acesso pelo IP externo da VM ou domínio.
+### Production environment
+
+| Item | Valor |
+|---|---|
+| Plataforma | Google Cloud Compute Engine (e2-micro, free tier permanente) |
+| OS | Ubuntu 24.04 LTS |
+| Zona | `us-west1-a` |
+| Projeto GCP | `chrome-energy-403306` |
+| VM name | `flux` |
+| IP externo | `34.168.140.230` |
+| Domínio | `rsc3-flux.duckdns.org` (DuckDNS, conta `chongrenato@gmail.com`) |
+| HTTPS | Let's Encrypt via certbot, auto-renovação via systemd timer |
+| Reverse proxy | nginx (`/etc/nginx/sites-available/flux`) → 127.0.0.1:3000 |
+| Process manager | PM2 + systemd (`pm2-CHONGRENATOO.service`) |
+| Banco | SQLite em `/var/lib/flux/database.sqlite` (fora do repo) |
+| Repo na VM | `/home/CHONGRENATOO/Flux/` |
+| Backup automático | Cron diário 03:00 UTC → `gs://flux-backups-rsc3` (30 dias retention) |
+| Firewall (GCP) | `allow-http-https` (TCP:80,443), `allow-ssh-iap` (TCP:22 from IAP). Porta 3000 não está mais exposta. |
+| Cadastros públicos | **Trancados** (`ALLOW_REGISTRATION=false`) — onboarding via `npm run create-user` |
+| Custo | **R$ 0,00/mês** (free tier permanente) |
+
+### Coabitação na VM
+
+A mesma VM hospeda também o **trabalho de faculdade do user** em `https://rsc3-boolean.duckdns.org` (Node app na porta 4000, server block próprio no nginx, certificado Let's Encrypt próprio). Convivem bem — RAM e CPU folgam.
+
+### Pegadinhas conhecidas que custaram tempo
+
+1. **`DATA_DIR` nos scripts npm**: `create-user`/`delete-user`/`list-users` caem num fallback (`server/database.sqlite` dentro do repo) se a env var `DATA_DIR=/var/lib/flux` não estiver setada. Resultado: usuário criado num "banco fantasma" que o app de produção não vê. **Fix permanente**: a env está exportada em `~/.bashrc` e `~/.profile` do usuário `CHONGRENATOO`. Toda sessão SSH nova já carrega.
+2. **`scripts/delete-user.js` antigo falhava** porque confiava em `ON DELETE CASCADE` que não existia em `invites.created_by` nem em `boards.owner_id` (esse último foi adicionado via `ALTER TABLE`). Corrigido em 2026-04-26 — o script agora limpa essas tabelas antes de deletar o user, dentro de uma transação.
+3. **`NODE_ENV=production` quebra login em HTTP**: ativa flag `Secure` no cookie de sessão, que o navegador descarta sem HTTPS. **Não rodar prod em HTTP**.
+4. **GCP Browser SSH é frágil**: precisou habilitar Cloud IAP API + criar regra de firewall pra `35.235.240.0/20:22`, mas mesmo assim ficou instável. Use `gcloud compute ssh flux --zone=us-west1-a` do PowerShell local.
+
+### Pendências antigas (lembretes)
+
+- 🗝️ **Revogar GitHub PAT `flux-vm-deploy`** que foi usado pra clonar o repo na VM. Ainda ativo — user precisa deletar em https://github.com/settings/tokens. Não é mais necessário (clone já feito).
 
 ---
 
@@ -121,7 +149,9 @@ npm start
 # abre http://localhost:3000
 ```
 
-Login do usuário (no banco local): **rsc3@cesar.school** (senha que ele criou).
+Login principal do user em produção: **chongrenato@gmail.com** (era `rsc3@cesar.school`, mas foi deletado em 2026-04-26 — escolheu a conta gmail como principal).
+
+Banco local de dev fica em `server/database.sqlite` (separado do banco de produção, que mora em `/var/lib/flux/`).
 
 ---
 
@@ -150,3 +180,5 @@ Login do usuário (no banco local): **rsc3@cesar.school** (senha que ele criou).
 - Mensagens de erro pro usuário em **português**
 - Sempre testar via curl/node antes de declarar pronto
 - **Nunca claim que algo "está pronto" sem ter visto funcionar** — se não posso testar visual, dizer explicitamente
+- Antes de qualquer ação que afete estado público (`git push`, mudar firewall do GCP, mexer no nginx em prod), **pedir confirmação explícita ao user** — ele prefere autorizar caso a caso
+- Pra qualquer comando que rode scripts npm na VM (`create-user`, `delete-user`, `list-users`), confirmar que `DATA_DIR=/var/lib/flux` está no env. Se rodar de outro contexto/usuário, prefixar manualmente. Nunca presumir.
