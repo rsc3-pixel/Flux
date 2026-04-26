@@ -339,9 +339,13 @@ DATA_DIR=/var/lib/flux npm run create-user -- email@dominio.com "senha-correta" 
 
 ### Atualizar IP do domínio (se IP da VM mudar)
 
-Loga em https://www.duckdns.org/ e atualiza no campo `current ip` do domínio `rsc3-flux`.
+Loga em https://www.duckdns.org/ e atualiza no campo `current ip` dos domínios `rsc3-flux` e `rsc3-boolean`.
 
-> O IP da VM raramente muda. Se a VM for reiniciada totalmente, o IP geralmente continua o mesmo (no GCP free tier ele é "ephemeral", mas tipicamente persiste). Se mudar, atualiza no DuckDNS.
+> Desde 2026-04-26 o IP da VM é **estático** (reservado como `flux-static-ip` no GCP), então **não muda mais com reboot**. Mas se um dia precisar trocar de VM/região, atualiza aqui.
+
+### Como o IP estático foi configurado
+
+Console GCP → VPC → Endereços IP → o IP efêmero da VM foi promovido a estático com o nome `flux-static-ip` em `us-west1`. **Custo zero** porque está atribuído a uma VM em execução. Se a VM for excluída (não desligada — excluída), o IP volta a cobrar (~US$ 7/mês) até ser liberado.
 
 ---
 

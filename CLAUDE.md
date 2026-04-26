@@ -112,7 +112,7 @@ Repo público: https://github.com/rsc3-pixel/Flux
 | Zona | `us-west1-a` |
 | Projeto GCP | `chrome-energy-403306` |
 | VM name | `flux` |
-| IP externo | `34.168.140.230` |
+| IP externo | `136.109.172.191` (estático, reservado como `flux-static-ip` em us-west1) |
 | Domínio | `rsc3-flux.duckdns.org` (DuckDNS, conta `chongrenato@gmail.com`) |
 | HTTPS | Let's Encrypt via certbot, auto-renovação via systemd timer |
 | Reverse proxy | nginx (`/etc/nginx/sites-available/flux`) → 127.0.0.1:3000 |
@@ -134,6 +134,7 @@ A mesma VM hospeda também o **trabalho de faculdade do user** em `https://rsc3-
 2. **`scripts/delete-user.js` antigo falhava** porque confiava em `ON DELETE CASCADE` que não existia em `invites.created_by` nem em `boards.owner_id` (esse último foi adicionado via `ALTER TABLE`). Corrigido em 2026-04-26 — o script agora limpa essas tabelas antes de deletar o user, dentro de uma transação.
 3. **`NODE_ENV=production` quebra login em HTTP**: ativa flag `Secure` no cookie de sessão, que o navegador descarta sem HTTPS. **Não rodar prod em HTTP**.
 4. **GCP Browser SSH é frágil**: precisou habilitar Cloud IAP API + criar regra de firewall pra `35.235.240.0/20:22`, mas mesmo assim ficou instável. Use `gcloud compute ssh flux --zone=us-west1-a` do PowerShell local.
+5. **IP externo efêmero muda quando a VM reinicia**: aconteceu em 2026-04-26 — VM rebootou (causa não investigada), ganhou IP `136.109.172.191` em vez de `34.168.140.230`, DuckDNS continuou apontando pro IP velho e tudo ficou fora do ar. Fix: o IP atual foi promovido a estático (`flux-static-ip` em us-west1). IP estático **associado a VM em execução é gratuito** no GCP — só cobra se ficar reservado sem uso.
 
 ### Pendências antigas (lembretes)
 
