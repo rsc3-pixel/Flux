@@ -161,6 +161,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
 `);
 
+// ---- BOARD ORDER PER USER (Iteration 5) ----
+// Each user can drag boards in the sidebar to set their own order.
+// Boards without an entry sort after the explicit ones, falling back to created_at DESC.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS board_user_order (
+    user_id  INTEGER NOT NULL,
+    board_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (user_id, board_id),
+    FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE,
+    FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_board_order_user ON board_user_order(user_id, position);
+`);
+
 // Backfill: every user without a workspace gets a default "Pessoal" one,
 // and every board without a workspace_id is linked to its owner's workspace.
 db.transaction(() => {

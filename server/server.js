@@ -261,12 +261,17 @@ app.post('/api/report-bug', bugReportLimiter, async (req, res) => {
 // BOARDS
 // =================================================================
 app.get('/api/boards', (req, res) => {
+  // Per-user ordering: boards the user has dragged sort by their saved position;
+  // boards without an entry fall back to created_at DESC (newest first).
   const boards = db.prepare(`
-    SELECT DISTINCT b.* FROM boards b
-    LEFT JOIN board_members m ON m.board_id = b.id
+    SELECT DISTINCT b.*, o.position AS user_position FROM boards b
+    LEFT JOIN board_members    m ON m.board_id = b.id
+    LEFT JOIN board_user_order o ON o.board_id = b.id AND o.user_id = ?
     WHERE b.owner_id = ? OR m.user_id = ?
-    ORDER BY b.created_at DESC
-  `).all(req.user.id, req.user.id);
+    ORDER BY CASE WHEN o.position IS NULL THEN 1 ELSE 0 END,
+             o.position ASC,
+             b.created_at DESC
+  `).all(req.user.id, req.user.id, req.user.id);
   res.json(boards);
 });
 
@@ -338,6 +343,36 @@ app.delete('/api/boards/:id', (req, res) => {
     });
   }
   res.status(204).end();
+});
+
+// Persist the user's preferred sidebar order. Body: { boardIds: [3, 1, 2] }.
+// Only IDs the user can actually view are kept; unknown IDs are silently dropped.
+app.patch('/api/boards/reorder', (req, res) => {
+  const { boardIds } = req.body;
+  if (!Array.isArray(boardIds))
+    return res.status(400).json({ error: 'boardIds deve ser um array' });
+  if (boardIds.length > 500)
+    return res.status(400).json({ error: 'Lista grande demais' });
+
+  const clean = [];
+  const seen = new Set();
+  for (const raw of boardIds) {
+    const id = parseInt(raw);
+    if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue;
+    if (!auth.canView(req.user.id, id)) continue;
+    seen.add(id);
+    clean.push(id);
+  }
+
+  const upsert = db.prepare(`
+    INSERT INTO board_user_order (user_id, board_id, position) VALUES (?, ?, ?)
+    ON CONFLICT(user_id, board_id) DO UPDATE SET position = excluded.position
+  `);
+  db.transaction(() => {
+    for (let i = 0; i < clean.length; i++) upsert.run(req.user.id, clean[i], i);
+  })();
+
+  res.json({ ok: true, count: clean.length });
 });
 
 // =================================================================

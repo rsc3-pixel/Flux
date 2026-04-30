@@ -12,6 +12,14 @@
 
 const releases = [
   {
+    version: '1.3.0',
+    date: '2026-04-30',
+    notes: [
+      '🖱️ Arraste os quadros na sidebar pra reordenar do seu jeito — o que estiver no topo é o que abre primeiro quando você entra no site',
+      '📌 A ordem é por usuário — cada membro de um quadro compartilhado pode organizar a sidebar como preferir, sem afetar os outros',
+    ],
+  },
+  {
     version: '1.2.0',
     date: '2026-04-26',
     notes: [

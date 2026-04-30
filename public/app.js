@@ -462,11 +462,38 @@ function renderBoardsNav() {
   nav.innerHTML = '';
   for (const b of state.boards) {
     const btn = document.createElement('button');
+    btn.dataset.boardId = b.id;
     btn.textContent = b.title;
     if (/^#[0-9a-f]{6}$/i.test(b.color || '')) btn.style.setProperty('--board-accent', b.color);
     if (b.id === state.currentBoardId) btn.classList.add('active');
     btn.addEventListener('click', () => loadBoard(b.id));
     nav.appendChild(btn);
+  }
+  // Drag-and-drop reorder. Long-press on touch avoids drag-on-tap; on desktop
+  // the click fires immediately because Sortable only triggers onEnd after movement.
+  Sortable.create(nav, {
+    animation: 180,
+    delay: 150,
+    delayOnTouchOnly: true,
+    ghostClass: 'board-nav-ghost',
+    chosenClass: 'board-nav-chosen',
+    dragClass: 'board-nav-drag',
+    onEnd: handleBoardsNavEnd,
+  });
+}
+
+async function handleBoardsNavEnd() {
+  const nav = $('#boardsNav');
+  const boardIds = [...nav.querySelectorAll('button[data-board-id]')]
+    .map(el => parseInt(el.dataset.boardId))
+    .filter(Number.isInteger);
+  // Optimistic local reorder so subsequent renders match what the user sees
+  state.boards.sort((a, b) => boardIds.indexOf(a.id) - boardIds.indexOf(b.id));
+  try {
+    await api.patch('/api/boards/reorder', { boardIds });
+  } catch {
+    // Server rejected — pull canonical order back from the DB
+    await loadBoards();
   }
 }
 

@@ -253,6 +253,10 @@ body {
   background: var(--board-accent, var(--color-text-muted));
   flex-shrink: 0;
 }
+/* SortableJS classes for the sidebar boards drag */
+.boards-nav button.board-nav-ghost  { opacity: 0.35; }
+.boards-nav button.board-nav-chosen { background: var(--color-surface-hover); box-shadow: var(--shadow-pop); }
+.boards-nav button.board-nav-drag   { cursor: grabbing; }
 
 /* ============ WORKSPACE NAV (sidebar bottom section) ============ */
 .sidebar-workspace-nav { margin-top: auto; }
