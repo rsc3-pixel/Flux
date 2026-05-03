@@ -1,19 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Flux brand mark — simplified for tiny sizes (favicon, sidebar).
-  Same concept as full logo but blockier and on a 1:1 canvas with a rounded
-  background tile so it reads at 16/24/32px.
+  Flux brand mark — compact tile for tiny sizes (favicon 16/32px, sidebar 22px,
+  PWA icon 192/512px). Same shapes as flux-logo.svg, scaled into a 64x64 canvas
+  with a rounded rectangle background so it reads as an "app icon".
+
+  Geometry: the original logo viewBox is 539.78 x 706.14, scaled by 0.068 and
+  translated to leave 8px of padding on each side. Single-colour white on the
+  blue tile — the tile itself supplies the contrast in any theme, so this file
+  doesn't need a dark-mode variant.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Flux">
-  <!-- Rounded square background -->
-  <rect width="64" height="64" rx="14" fill="#0052CC"/>
-  <!-- White F made of arrows -->
-  <g fill="#ffffff">
-    <!-- Top arrow -->
-    <path d="M 14 16 L 38 16 L 38 12 L 50 20 L 38 28 L 38 24 L 14 24 Z"/>
-    <!-- Middle arrow (indented) -->
-    <path d="M 19 30 L 36 30 L 36 26 L 46 34 L 36 42 L 36 38 L 19 38 Z"/>
-    <!-- Bottom arrow (indented more, smaller) -->
-    <path d="M 24 44 L 32 44 L 32 40 L 42 48 L 32 56 L 32 52 L 24 52 Z"/>
+  <rect width="64" height="64" rx="14" fill="#0057d1"/>
+  <g transform="translate(13.65 8) scale(0.068)" fill="#ffffff">
+    <polygon points="88.99 68.42 384.15 68.42 384.15 0 539.78 124.77 384.15 252.22 384.15 183.8 138.63 183.8 185.59 287.11 113.14 287.11 72.89 330.04 8.5 186.48 88.99 68.42"/>
+    <polygon points="123.43 306.34 8.5 421.71 8.5 552.3 47.4 599.7 0 648 192.3 706.14 177.09 466.43 131.48 517.42 83.18 421.71 270.28 421.71 270.28 487.9 408.75 365.61 270.28 235.68 270.28 306.34 123.43 306.34"/>
   </g>
 </svg>

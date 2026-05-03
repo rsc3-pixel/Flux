@@ -200,6 +200,10 @@ body {
   height: auto;
   border-radius: 0;
 }
+/* Dark theme swaps the auth-screen logo for a white variant — the brand-blue
+   loses contrast against the dark auth card. Mark + sidebar logo carry their
+   own background tile, so they don't need a swap. */
+[data-theme="dark"] .brand-logo-large { content: url('/flux-logo-dark.svg'); }
 .sidebar-brand h1 {
   font-size: 18px;
   font-weight: 700;

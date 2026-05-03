@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.3.1',
+    date: '2026-05-03',
+    notes: [
+      '🎨 Logo do Flux redesenhada — visual mais moderno na tela de login, no favicon e no ícone do app instalado',
+    ],
+  },
+  {
     version: '1.3.0',
     date: '2026-04-30',
     notes: [

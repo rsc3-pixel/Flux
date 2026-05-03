@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Flux brand mark — dark-mode variant of flux-logo.svg.
+  White fill so it reads on the dark auth card (#1E293B) where the brand-blue
+  variant would be too low-contrast. CSS swaps to this file via
+  [data-theme="dark"] .brand-logo-large { content: url(...) }.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 539.78 706.14" role="img" aria-label="Flux">
+  <polygon fill="#ffffff" points="88.99 68.42 384.15 68.42 384.15 0 539.78 124.77 384.15 252.22 384.15 183.8 138.63 183.8 185.59 287.11 113.14 287.11 72.89 330.04 8.5 186.48 88.99 68.42"/>
+  <polygon fill="#ffffff" points="123.43 306.34 8.5 421.71 8.5 552.3 47.4 599.7 0 648 192.3 706.14 177.09 466.43 131.48 517.42 83.18 421.71 270.28 421.71 270.28 487.9 408.75 365.61 270.28 235.68 270.28 306.34 123.43 306.34"/>
+</svg>

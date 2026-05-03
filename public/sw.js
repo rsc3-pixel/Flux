@@ -11,7 +11,7 @@
 // app.js or styles.css. Otherwise the previous cache silently keeps serving
 // the old shell on every device that has an existing SW installed (PWAs and
 // repeat browser visits). Pattern: 'flux-v<package.json-version>'.
-const CACHE = 'flux-v1.2.0-polish';
+const CACHE = 'flux-v1.3.1-logo-r2';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -19,6 +19,7 @@ const APP_SHELL = [
   '/app.js',
   '/vendor/sortable.min.js',
   '/flux-logo.svg',
+  '/flux-logo-dark.svg',
   '/flux-mark.svg',
   '/manifest.json',
 ];
