@@ -34,12 +34,19 @@ app.use('/sw.js', (_req, res, next) => {
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Disable the trustProxy validator in express-rate-limit v8: it's overly
+// strict and warns on every request even though we've correctly set
+// `app.set('trust proxy', 1)` above. Without disabling, the logs get
+// flooded with ValidationError stack traces that obscure real issues.
+const RL_VALIDATE = { trustProxy: false };
+
 // Rate limiter for auth endpoints (5 attempts / 15 min per IP)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: RL_VALIDATE,
   message: { error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
 });
 
@@ -49,6 +56,7 @@ const bugReportLimiter = rateLimit({
   max: 3,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: RL_VALIDATE,
   message: { error: 'Muitos reports. Tente novamente em 1 hora.' },
 });
 

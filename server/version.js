@@ -12,6 +12,14 @@
 
 const releases = [
   {
+    version: '1.3.2',
+    date: '2026-05-05',
+    notes: [
+      '🛟 App agora se recupera sozinho de cache desatualizado — em vez de "tela azul" travada, mostra um botão "Recarregar" pra você sair do limbo',
+      '🔧 Service worker mais resiliente — atualizações deixam de travar se um arquivo demorar pra baixar',
+    ],
+  },
+  {
     version: '1.3.1',
     date: '2026-05-03',
     notes: [

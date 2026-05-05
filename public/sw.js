@@ -11,7 +11,7 @@
 // app.js or styles.css. Otherwise the previous cache silently keeps serving
 // the old shell on every device that has an existing SW installed (PWAs and
 // repeat browser visits). Pattern: 'flux-v<package.json-version>'.
-const CACHE = 'flux-v1.3.1-logo-r2';
+const CACHE = 'flux-v1.3.2-recovery';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -25,8 +25,22 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
+  // Tolerant install: cache.addAll is all-or-nothing, so a single failed
+  // asset (timeout, 404, slow CDN) aborts the entire SW install. The old SW
+  // then keeps serving the previous cache while the browser sees the new
+  // shell from the network — a recipe for cache mismatch and silent JS
+  // breakage. Caching individually with allSettled lets the SW activate
+  // even if one asset failed; the missing one will be fetched on demand.
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE)
+      .then(async (cache) => {
+        const results = await Promise.allSettled(APP_SHELL.map((url) => cache.add(url)));
+        const failed = results
+          .map((r, i) => (r.status === 'rejected' ? APP_SHELL[i] : null))
+          .filter(Boolean);
+        if (failed.length) console.warn('SW install: skipped failed assets', failed);
+      })
+      .then(() => self.skipWaiting())
   );
 });
 

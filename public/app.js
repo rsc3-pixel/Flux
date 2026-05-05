@@ -164,28 +164,52 @@ const api = {
 
 // ============ AUTH BOOT ============
 async function bootAuth() {
-  // Apply persisted user settings immediately (theme/color visible on login screen)
-  applySettings();
+  // Each step is wrapped so a single failure can't strand the user on a blank
+  // page. Without these guards, a network error during /api/auth/me (common
+  // when the PWA's service worker is mid-upgrade) would reject bootAuth and
+  // leave both #authScreen and #appShell hidden — user sees only the body
+  // background, which on the auth screen reads as a "blue screen".
+  try { applySettings(); } catch (e) { console.warn('applySettings failed', e); }
+  try { injectIcons(); setupIconAnimations(); } catch (e) { console.warn('icons failed', e); }
 
-  // Replace all [data-icon] markers with their SVG counterparts and wire animations
-  injectIcons();
-  setupIconAnimations();
+  try {
+    const params = new URLSearchParams(window.location.search);
+    state.pendingInviteToken = params.get('invite');
+  } catch {}
 
-  // Capture invite token from URL (so we can use it after login)
-  const params = new URLSearchParams(window.location.search);
-  state.pendingInviteToken = params.get('invite');
+  try { setupAuthListeners(); } catch (e) { console.warn('auth listeners failed', e); }
 
-  // Wire up auth-screen forms regardless (in case we land there)
-  setupAuthListeners();
-
-  // Try to load current user
-  const meRes = await request('/api/auth/me');
-  if (meRes.ok) {
-    state.user = await meRes.json();
-    await afterLogin();
-  } else {
-    showAuthScreen();
+  // Try to load current user. If the network call rejects entirely (offline,
+  // SW abort during upgrade, server unreachable), fall through to the auth
+  // screen so the user has something to interact with instead of a void.
+  try {
+    const meRes = await request('/api/auth/me');
+    if (meRes.ok) {
+      state.user = await meRes.json();
+      await afterLogin();
+      return;
+    }
+  } catch (err) {
+    console.error('Boot: /api/auth/me failed', err);
   }
+  // Either not logged in or the call failed — show the auth screen.
+  try {
+    await showAuthScreen();
+  } catch (err) {
+    // Last-resort fallback: if even showing the auth screen throws, surface
+    // the boot-error banner so the user can reload manually.
+    console.error('Boot: showAuthScreen failed', err);
+    showBootError();
+  }
+}
+
+// Surface a minimal recovery UI when the JS boot fails catastrophically.
+// Without this, the user stares at the body background (often the auth-screen
+// gradient if it briefly appeared) with no way to recover except clearing
+// site data manually.
+function showBootError() {
+  const el = document.getElementById('bootError');
+  if (el) el.classList.remove('hidden');
 }
 
 async function afterLogin() {

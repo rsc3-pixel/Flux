@@ -20,6 +20,15 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- BOOT-ERROR BANNER (last-resort recovery UI). Shown by app.js when the
+       JS boot trips so badly that neither auth nor app shell render.
+       Inline styles so it works even if styles.css failed to load. -->
+  <div id="bootError" class="hidden" style="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#fff;color:#0f172a;font-family:system-ui,sans-serif;padding:24px;text-align:center;">
+    <strong style="font-size:18px;">Não foi possível carregar o Flux</strong>
+    <p style="max-width:380px;margin:0;color:#475569;">Isso geralmente é cache desatualizado. Toque em "Recarregar" para tentar de novo. Se persistir, abra em uma janela anônima ou limpe os dados do site.</p>
+    <button onclick="location.reload(true)" style="padding:10px 20px;border:none;border-radius:8px;background:#0057d1;color:#fff;font-size:14px;font-weight:600;cursor:pointer;">Recarregar</button>
+  </div>
+
   <!-- AUTH SCREEN (login / register) -->
   <div id="authScreen" class="auth-screen hidden">
     <div class="auth-card">
@@ -693,5 +702,21 @@
   <!-- SortableJS — drag&drop universal (mouse + touch). Self-hosted from /vendor -->
   <script src="/vendor/sortable.min.js"></script>
   <script src="app.js"></script>
+
+  <!-- Boot watchdog: if neither the auth screen nor the app shell is visible
+       8 seconds after page load, app.js probably failed to load or threw before
+       it could render anything. Surface the recovery banner so the user has a
+       way out instead of staring at a blank/blue page. -->
+  <script>
+    setTimeout(function () {
+      var auth  = document.getElementById('authScreen');
+      var shell = document.getElementById('appShell');
+      var visible = function (el) { return el && !el.classList.contains('hidden'); };
+      if (!visible(auth) && !visible(shell)) {
+        var err = document.getElementById('bootError');
+        if (err) err.classList.remove('hidden');
+      }
+    }, 8000);
+  </script>
 </body>
 </html>
