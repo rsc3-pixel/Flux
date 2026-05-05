@@ -248,13 +248,17 @@ async function showAuthScreen() {
   $('#loginError')?.classList.add('hidden');
   $('#registerError')?.classList.add('hidden');
 
-  // Honor server-side registration lock: hide the "Criar conta" tab when off
+  // Honor server-side registration lock: hide the "Criar conta" tab when off,
+  // EXCEPT when the user arrived via an invite link — in that case the server
+  // will let them register if their email matches the invite's whitelist, so
+  // we must keep the tab visible.
   try {
     const cfg = await fetch('/api/config').then(r => r.json()).catch(() => ({}));
     const regTab = document.querySelector('.auth-tab[data-auth-tab="register"]');
-    if (regTab) regTab.style.display = cfg.registrationEnabled === false ? 'none' : '';
-    // If currently on the register tab but it's disabled, switch to login
-    if (cfg.registrationEnabled === false) {
+    const allowViaInvite = !!state.pendingInviteToken;
+    const showRegister = cfg.registrationEnabled !== false || allowViaInvite;
+    if (regTab) regTab.style.display = showRegister ? '' : 'none';
+    if (!showRegister) {
       document.querySelector('.auth-tab[data-auth-tab="login"]')?.click();
     }
   } catch {}
@@ -332,15 +336,20 @@ async function doLogin(e) {
 async function doRegister(e) {
   e.preventDefault();
   $('#registerError').classList.add('hidden');
+  // Pass the invite token from the URL (if any) so the server can let this
+  // registration through even when ALLOW_REGISTRATION=false, provided the
+  // email matches the invite's whitelist.
+  const body = {
+    name: $('#registerName').value.trim(),
+    email: $('#registerEmail').value.trim(),
+    password: $('#registerPassword').value,
+  };
+  if (state.pendingInviteToken) body.inviteToken = state.pendingInviteToken;
   const res = await fetch('/api/auth/register', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: $('#registerName').value.trim(),
-      email: $('#registerEmail').value.trim(),
-      password: $('#registerPassword').value,
-    }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1983,14 +1992,246 @@ async function wizardFinish() {
 }
 
 // ============ MEMBERS MODAL ============
+// Per-modal-open: list of emails the user typed into the chips input but
+// hasn't yet submitted as a single invite. Reset when the modal opens.
+let inviteEmailsBuffer = [];
+
 async function openMembersModal() {
   if (!state.currentBoard) return;
   $('#membersModal').classList.remove('hidden');
+
+  // Reset invite composer to a clean state every open
+  inviteEmailsBuffer = [];
+  $('#inviteEmailInput').value = '';
+  $('#inviteEmailError').classList.add('hidden');
   $('#inviteLinkArea').classList.add('hidden');
+  renderInviteChips();
+
   const canManage = state.currentBoard.role === 'owner' || state.currentBoard.role === 'admin';
-  $('#generateInviteBtn').disabled = !canManage;
-  $('#inviteRoleSelect').disabled = !canManage;
+  $('#inviteSection').classList.toggle('hidden', !canManage);
+  $('#pendingInvitesSection').classList.toggle('hidden', !canManage);
+
   await renderMembersList();
+  if (canManage) await renderPendingInvites();
+}
+
+function renderInviteChips() {
+  const list = $('#inviteChipsList');
+  list.innerHTML = '';
+  for (const email of inviteEmailsBuffer) {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `<span class="chip-email">${escapeHtml(email)}</span>`;
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'chip-remove';
+    rm.setAttribute('aria-label', `Remover ${email}`);
+    rm.textContent = '×';
+    rm.addEventListener('click', () => {
+      inviteEmailsBuffer = inviteEmailsBuffer.filter((e) => e !== email);
+      renderInviteChips();
+    });
+    chip.appendChild(rm);
+    list.appendChild(chip);
+  }
+  $('#inviteChipsCounter').textContent = `${inviteEmailsBuffer.length} / 20 emails`;
+  $('#generateInviteBtn').disabled = inviteEmailsBuffer.length === 0;
+}
+
+const EMAIL_RE_CLIENT = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function tryAddInviteEmail(rawInput) {
+  const errorEl = $('#inviteEmailError');
+  errorEl.classList.add('hidden');
+  errorEl.textContent = '';
+
+  // Allow paste with multiple emails separated by , ; or whitespace
+  const candidates = String(rawInput || '')
+    .split(/[\s,;]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (candidates.length === 0) return false;
+
+  const ownerOrSelfEmails = new Set();
+  if (state.user?.email) ownerOrSelfEmails.add(state.user.email.toLowerCase());
+  // Also block existing members so the user gets immediate feedback.
+  const memberEmails = new Set(
+    (state.boardMembers || []).map((m) => (m.email || '').toLowerCase())
+  );
+
+  let added = 0;
+  const reasons = [];
+  for (const e of candidates) {
+    if (!EMAIL_RE_CLIENT.test(e))            { reasons.push(`Email inválido: ${e}`); continue; }
+    if (e.length > 200)                       { reasons.push(`Email muito longo: ${e}`); continue; }
+    if (inviteEmailsBuffer.includes(e))       { reasons.push(`Já adicionado: ${e}`); continue; }
+    if (ownerOrSelfEmails.has(e))             { reasons.push(`Esse é o seu email`); continue; }
+    if (memberEmails.has(e))                  { reasons.push(`${e} já é membro`); continue; }
+    if (inviteEmailsBuffer.length >= 20)      { reasons.push(`Máximo 20 emails por convite`); break; }
+    inviteEmailsBuffer.push(e);
+    added++;
+  }
+
+  if (added > 0) renderInviteChips();
+  if (reasons.length > 0) {
+    errorEl.textContent = reasons[0]; // Show the first issue; user can read more if they care
+    errorEl.classList.remove('hidden');
+  }
+  return added > 0;
+}
+
+function setupInviteChipsInput() {
+  const input = $('#inviteEmailInput');
+  const addBtn = $('#inviteAddEmailBtn');
+  if (!input || input.dataset.wired === 'true') return;
+  input.dataset.wired = 'true';
+
+  const commit = () => {
+    const v = input.value.trim();
+    if (!v) return;
+    if (tryAddInviteEmail(v)) input.value = '';
+  };
+
+  addBtn.addEventListener('click', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    } else if (e.key === 'Backspace' && input.value === '' && inviteEmailsBuffer.length > 0) {
+      // Gmail-style: backspace on empty input removes the last chip
+      e.preventDefault();
+      inviteEmailsBuffer.pop();
+      renderInviteChips();
+    } else if (e.key === ',' || e.key === ';') {
+      // Comma/semicolon also commits — common when copying lists
+      e.preventDefault();
+      commit();
+    }
+  });
+  input.addEventListener('paste', (e) => {
+    const text = e.clipboardData?.getData('text');
+    if (text && /[,;\s]/.test(text)) {
+      // Multi-email paste — handle ourselves so we can split + dedupe
+      e.preventDefault();
+      tryAddInviteEmail(text);
+      input.value = '';
+    }
+  });
+}
+
+async function renderPendingInvites() {
+  const wrap = $('#pendingInvitesList');
+  wrap.innerHTML = '<p class="muted-small">Carregando...</p>';
+  let invites = [];
+  try {
+    invites = await api.get(`/api/boards/${state.currentBoardId}/invites`);
+  } catch {
+    wrap.innerHTML = '<p class="muted-small">Falha ao carregar convites.</p>';
+    return;
+  }
+
+  // Hide the legacy single-use invites that have already been used — they're
+  // not interesting to anyone anymore and would just clutter the list.
+  invites = invites.filter((inv) => !(inv.legacy && inv.used_at));
+
+  if (invites.length === 0) {
+    wrap.innerHTML = '<p class="muted-small">Nenhum convite pendente.</p>';
+    return;
+  }
+
+  wrap.innerHTML = '';
+  for (const inv of invites) {
+    const card = document.createElement('div');
+    card.className = 'pending-invite-card';
+
+    const header = document.createElement('div');
+    header.className = 'pending-invite-header';
+    const enteredCount = inv.emails.filter((e) => e.used_at).length;
+    const totalCount = inv.emails.length;
+    const summary = inv.legacy
+      ? 'Link antigo (1 uso)'
+      : `${totalCount} email(s), ${enteredCount} entrou(aram)`;
+    header.innerHTML = `
+      <strong>${inv.role === 'admin' ? '🛡️ Admin' : '👤 Membro'}</strong>
+      <span class="pi-meta">${summary} · ${formatRelativeTime(inv.created_at)}</span>
+    `;
+
+    const body = document.createElement('div');
+    body.className = 'pending-invite-body';
+
+    if (inv.legacy) {
+      const note = document.createElement('p');
+      note.className = 'muted-small';
+      note.textContent = 'Convite antigo, sem email amarrado. Qualquer pessoa logada com o link entra (uma vez).';
+      body.appendChild(note);
+    } else {
+      for (const e of inv.emails) {
+        const row = document.createElement('div');
+        row.className = 'pi-email-row';
+        const entered = !!e.used_at;
+        row.innerHTML = `
+          <span class="pi-status ${entered ? 'entered' : 'pending'}">${entered ? '✓' : '○'}</span>
+          <span class="pi-email">${escapeHtml(e.email)}</span>
+          <span class="pi-when">${entered ? `entrou ${formatRelativeTime(e.used_at)}${e.user_name ? ` (${escapeHtml(e.user_name)})` : ''}` : 'aguardando'}</span>
+        `;
+        body.appendChild(row);
+      }
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'pending-invite-actions';
+    const link = `${window.location.origin}/?invite=${inv.token}`;
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn btn-ghost';
+    copyBtn.textContent = '📋 Copiar link';
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(link).then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✅ Copiado!';
+        setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+      });
+    });
+    const revokeBtn = document.createElement('button');
+    revokeBtn.type = 'button';
+    revokeBtn.className = 'btn btn-ghost';
+    revokeBtn.textContent = '🗑 Revogar';
+    revokeBtn.addEventListener('click', async () => {
+      if (!confirm('Revogar este convite? O link deixa de funcionar imediatamente.')) return;
+      try {
+        await api.delete(`/api/invites/${inv.id}`);
+        await renderPendingInvites();
+      } catch (err) {
+        alert('Falha ao revogar convite.');
+      }
+    });
+    actions.appendChild(copyBtn);
+    actions.appendChild(revokeBtn);
+
+    card.appendChild(header);
+    card.appendChild(body);
+    card.appendChild(actions);
+    wrap.appendChild(card);
+  }
+}
+
+// Lightweight relative-time formatter (PT-BR). Avoids pulling in Intl.RelativeTimeFormat
+// boilerplate; "X dias atrás" granularity is enough for invites.
+function formatRelativeTime(iso) {
+  if (!iso) return '';
+  const t = new Date(iso.replace(' ', 'T') + 'Z').getTime();
+  const diff = Math.max(0, Date.now() - t);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'agora mesmo';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'há 1 dia';
+  if (d < 30) return `há ${d} dias`;
+  const mo = Math.floor(d / 30);
+  return mo === 1 ? 'há 1 mês' : `há ${mo} meses`;
 }
 
 async function renderMembersList() {
@@ -2046,12 +2287,38 @@ async function renderMembersList() {
 }
 
 async function generateInvite() {
+  if (inviteEmailsBuffer.length === 0) return;
   const role = $('#inviteRoleSelect').value;
-  const inv = await api.post(`/api/boards/${state.currentBoardId}/invites`, { role });
-  if (!inv.token) return;
+  const btn = $('#generateInviteBtn');
+  btn.disabled = true;
+  const origLabel = btn.textContent;
+  btn.textContent = 'Gerando...';
+  let inv;
+  try {
+    inv = await api.post(`/api/boards/${state.currentBoardId}/invites`, {
+      role,
+      emails: inviteEmailsBuffer,
+    });
+  } catch (err) {
+    alert('Falha ao gerar convite. Verifique os emails e tente novamente.');
+    btn.disabled = false;
+    btn.textContent = origLabel;
+    return;
+  }
+  if (!inv.token) {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+    return;
+  }
   const link = `${window.location.origin}/?invite=${inv.token}`;
   $('#inviteLinkInput').value = link;
   $('#inviteLinkArea').classList.remove('hidden');
+  // Reset the composer so the "Generate" button reflects the empty state and
+  // the user can either copy the link they just made or compose another batch.
+  inviteEmailsBuffer = [];
+  renderInviteChips();
+  btn.textContent = origLabel;
+  await renderPendingInvites();
 }
 
 function copyInviteLink() {
@@ -2063,6 +2330,12 @@ function copyInviteLink() {
     btn.textContent = '✅ Copiado!';
     setTimeout(() => { btn.textContent = orig; }, 1500);
   });
+}
+
+function startNewInvite() {
+  // Hide the link area, focus the email input — composer already empty
+  $('#inviteLinkArea').classList.add('hidden');
+  $('#inviteEmailInput').focus();
 }
 
 // ============ LIST OPS ============
@@ -2462,6 +2735,8 @@ function setupEventListeners() {
   $('#membersBtn').addEventListener('click', openMembersModal);
   $('#generateInviteBtn').addEventListener('click', generateInvite);
   $('#copyInviteBtn').addEventListener('click', copyInviteLink);
+  $('#newInviteBtn').addEventListener('click', startNewInvite);
+  setupInviteChipsInput();
 
   // Filters dropdown
   $('#filtersBtn').addEventListener('click', (e) => {

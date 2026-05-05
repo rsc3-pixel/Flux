@@ -161,6 +161,26 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
 `);
 
+// ---- INVITE ALLOWED EMAILS (Iteration 6) ----
+// Each invite can carry a whitelist of emails. The link only works for users
+// whose login email matches one of the entries. Multiple emails per invite =
+// the owner generates ONE link and shares it with the whole team; each person
+// claims their slot once. Legacy invites (no rows here) keep the old single-use
+// behavior driven by invites.used_at.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS invite_allowed_emails (
+    invite_id INTEGER NOT NULL,
+    email     TEXT NOT NULL,
+    used_at   DATETIME,
+    user_id   INTEGER,
+    PRIMARY KEY (invite_id, email),
+    FOREIGN KEY (invite_id) REFERENCES invites(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id)   REFERENCES users(id)   ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_invite_emails_invite ON invite_allowed_emails(invite_id);
+  CREATE INDEX IF NOT EXISTS idx_invite_emails_email  ON invite_allowed_emails(email);
+`);
+
 // ---- BOARD ORDER PER USER (Iteration 5) ----
 // Each user can drag boards in the sidebar to set their own order.
 // Boards without an entry sort after the explicit ones, falling back to created_at DESC.

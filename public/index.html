@@ -628,23 +628,50 @@
         <button class="modal-close" data-close data-icon="x" data-icon-only="true" data-anim="pop" aria-label="Fechar"></button>
       </header>
       <div class="modal-body">
-        <div class="invite-section">
-          <h4 class="section-title">Convidar com link</h4>
-          <p class="muted-small">Gere um link com função pré-definida e envie para quem você quiser.</p>
-          <div class="invite-controls">
-            <select id="inviteRoleSelect">
-              <option value="membro">👤 Membro (edita cards e listas)</option>
-              <option value="admin">🛡️ Admin (gerencia membros e edita tudo)</option>
-            </select>
-            <button type="button" class="btn btn-primary" id="generateInviteBtn" data-icon="plus" data-anim="pop">Gerar link</button>
+        <!-- INVITE SECTION (admins/owner only) -->
+        <div class="invite-section" id="inviteSection">
+          <h4 class="section-title">Convidar pessoas</h4>
+          <p class="muted-small">Adicione os emails autorizados. O link gerado só funcionará para quem entrar com um desses emails.</p>
+
+          <label class="invite-field-label">Permissão</label>
+          <select id="inviteRoleSelect">
+            <option value="membro">👤 Membro (edita cards e listas)</option>
+            <option value="admin">🛡️ Admin (gerencia membros e edita tudo)</option>
+          </select>
+
+          <label class="invite-field-label" for="inviteEmailInput">Email</label>
+          <div class="chips-input">
+            <input type="email" id="inviteEmailInput" placeholder="digite um email e pressione Enter" autocomplete="off" inputmode="email" />
+            <button type="button" id="inviteAddEmailBtn" class="btn btn-ghost" aria-label="Adicionar email" data-icon="plus" data-icon-only="true" data-anim="pop"></button>
           </div>
+          <p class="chips-error hidden" id="inviteEmailError"></p>
+
+          <div class="chips-list" id="inviteChipsList" aria-live="polite"></div>
+          <p class="muted-small chips-counter" id="inviteChipsCounter">0 / 20 emails</p>
+
+          <button type="button" class="btn btn-primary btn-block" id="generateInviteBtn" disabled>
+            Gerar link de convite
+          </button>
+
           <div class="invite-link-area hidden" id="inviteLinkArea">
-            <input type="text" id="inviteLinkInput" readonly />
-            <button type="button" class="btn btn-ghost" id="copyInviteBtn" data-icon="copy" data-anim="pop">Copiar</button>
+            <p class="muted-small">✅ Link criado. Compartilhe com a equipe:</p>
+            <div class="invite-link-row">
+              <input type="text" id="inviteLinkInput" readonly />
+              <button type="button" class="btn btn-ghost" id="copyInviteBtn" data-icon="copy" data-anim="pop">Copiar</button>
+            </div>
+            <button type="button" class="btn btn-ghost btn-block" id="newInviteBtn" data-icon="plus" data-anim="pop">Convidar mais pessoas</button>
           </div>
         </div>
 
         <hr class="section-divider" />
+
+        <!-- PENDING INVITES SECTION -->
+        <div class="pending-invites-section hidden" id="pendingInvitesSection">
+          <h4 class="section-title">Convites pendentes</h4>
+          <div id="pendingInvitesList"></div>
+        </div>
+
+        <hr class="section-divider" id="membersDivider" />
 
         <h4 class="section-title">Membros atuais</h4>
         <div id="membersList" class="members-list"></div>

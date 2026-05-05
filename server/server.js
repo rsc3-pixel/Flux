@@ -110,13 +110,7 @@ app.get('/api/version', (_req, res) => {
 });
 
 app.post('/api/auth/register', authLimiter, (req, res) => {
-  // Honor the ALLOW_REGISTRATION lock (with bootstrap exception for the very first user)
-  const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
-  if (userCount > 0 && process.env.ALLOW_REGISTRATION === 'false') {
-    return res.status(403).json({ error: 'Cadastros estão desabilitados nesta instância' });
-  }
-
-  const { email, password, name } = req.body || {};
+  const { email, password, name, inviteToken } = req.body || {};
   if (!email || !password || !name)
     return res.status(400).json({ error: 'Email, senha e nome obrigatórios' });
   if (typeof email !== 'string' || !EMAIL_RE.test(email))
@@ -127,6 +121,29 @@ app.post('/api/auth/register', authLimiter, (req, res) => {
     return res.status(400).json({ error: 'Nome inválido' });
 
   const emailLower = email.toLowerCase();
+
+  // Honor ALLOW_REGISTRATION=false, with TWO bootstrap exceptions:
+  //  1. Very first user (zero accounts) — always allowed.
+  //  2. User is registering with an inviteToken whose whitelist includes
+  //     this email — they were explicitly invited by an existing user, so
+  //     letting them register is the entire point of the invite.
+  const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
+  if (userCount > 0 && process.env.ALLOW_REGISTRATION === 'false') {
+    let hasValidInvite = false;
+    if (typeof inviteToken === 'string' && inviteToken) {
+      const inv = db.prepare('SELECT id FROM invites WHERE token = ?').get(inviteToken);
+      if (inv) {
+        const slot = db.prepare(
+          'SELECT 1 FROM invite_allowed_emails WHERE invite_id = ? AND email = ? AND used_at IS NULL'
+        ).get(inv.id, emailLower);
+        if (slot) hasValidInvite = true;
+      }
+    }
+    if (!hasValidInvite) {
+      return res.status(403).json({ error: 'Cadastros estão desabilitados. Use um link de convite com seu email.' });
+    }
+  }
+
   const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(emailLower);
   if (exists) return res.status(409).json({ error: 'Email já cadastrado' });
 
@@ -725,25 +742,128 @@ app.put('/api/boards/:id/members/:userId', (req, res) => {
   res.json({ ok: true });
 });
 
+// Sanitize and dedupe a list of email strings. Returns lowercased, trimmed,
+// validated, deduped list. Throws if any single email is malformed so the
+// server can return a precise error.
+function normalizeEmailList(input, max = 20) {
+  if (!Array.isArray(input)) throw { code: 400, msg: 'emails deve ser uma lista' };
+  if (input.length === 0)    throw { code: 400, msg: 'Adicione ao menos um email' };
+  if (input.length > max)    throw { code: 400, msg: `Máximo ${max} emails por convite` };
+  const seen = new Set();
+  const clean = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string') throw { code: 400, msg: 'Email inválido na lista' };
+    const e = raw.trim().toLowerCase();
+    if (!EMAIL_RE.test(e))   throw { code: 400, msg: `Email inválido: ${raw}` };
+    if (e.length > 200)      throw { code: 400, msg: 'Email muito longo' };
+    if (seen.has(e)) continue;
+    seen.add(e);
+    clean.push(e);
+  }
+  return clean;
+}
+
 app.post('/api/boards/:id/invites', (req, res) => {
   const boardId = parseInt(req.params.id);
   if (!auth.canManage(req.user.id, boardId))
     return res.status(403).json({ error: 'Sem permissão' });
   const role = ['admin', 'membro'].includes(req.body.role) ? req.body.role : 'membro';
+
+  // New flow: emails array required. Each email is whitelisted for this invite.
+  let emails;
+  try { emails = normalizeEmailList(req.body.emails); }
+  catch (e) { return res.status(e.code || 400).json({ error: e.msg || 'Erro' }); }
+
+  // Don't accept the owner's own email (they're already in)
+  const ownerEmail = db.prepare(`
+    SELECT u.email FROM users u JOIN boards b ON b.owner_id = u.id WHERE b.id = ?
+  `).get(boardId)?.email;
+  if (ownerEmail && emails.includes(ownerEmail.toLowerCase())) {
+    return res.status(400).json({ error: 'Você já é o dono deste quadro' });
+  }
+
   const token = auth.newToken();
-  db.prepare('INSERT INTO invites (board_id, token, role, created_by) VALUES (?, ?, ?, ?)')
-    .run(boardId, token, role, req.user.id);
-  res.status(201).json({ token, role });
+  const result = db.transaction(() => {
+    const info = db.prepare('INSERT INTO invites (board_id, token, role, created_by) VALUES (?, ?, ?, ?)')
+                   .run(boardId, token, role, req.user.id);
+    const inviteId = info.lastInsertRowid;
+    const insertEmail = db.prepare('INSERT INTO invite_allowed_emails (invite_id, email) VALUES (?, ?)');
+    for (const e of emails) insertEmail.run(inviteId, e);
+    return inviteId;
+  })();
+
+  res.status(201).json({ id: result, token, role, emails });
+});
+
+// List pending invites for a board, with the per-email status (entered / pending).
+// Used by the Members modal's "Convites pendentes" section.
+app.get('/api/boards/:id/invites', (req, res) => {
+  const boardId = parseInt(req.params.id);
+  if (!auth.canManage(req.user.id, boardId))
+    return res.status(403).json({ error: 'Sem permissão' });
+
+  const invites = db.prepare(`
+    SELECT id, token, role, created_at, used_at, created_by
+    FROM invites WHERE board_id = ? ORDER BY created_at DESC
+  `).all(boardId);
+
+  const emailStmt = db.prepare(`
+    SELECT a.email, a.used_at, u.name AS user_name
+    FROM invite_allowed_emails a
+    LEFT JOIN users u ON u.id = a.user_id
+    WHERE a.invite_id = ?
+    ORDER BY a.email
+  `);
+
+  const out = invites.map((inv) => {
+    const emails = emailStmt.all(inv.id);
+    return {
+      id: inv.id,
+      token: inv.token,
+      role: inv.role,
+      created_at: inv.created_at,
+      // Legacy (no whitelist rows): expose the old used_at + flag so the UI
+      // can render "single-use, used by ?" instead of a list of emails.
+      legacy: emails.length === 0,
+      used_at: inv.used_at,
+      emails, // [{email, used_at, user_name}]
+    };
+  });
+  res.json(out);
+});
+
+app.delete('/api/invites/:id', (req, res) => {
+  const inviteId = parseInt(req.params.id);
+  const inv = db.prepare('SELECT board_id FROM invites WHERE id = ?').get(inviteId);
+  if (!inv) return res.status(404).json({ error: 'Convite não encontrado' });
+  if (!auth.canManage(req.user.id, inv.board_id))
+    return res.status(403).json({ error: 'Sem permissão' });
+  db.prepare('DELETE FROM invites WHERE id = ?').run(inviteId);
+  // CASCADE in the schema cleans up invite_allowed_emails automatically.
+  res.status(204).end();
 });
 
 app.post('/api/invites/:token/accept', (req, res) => {
   const inv = db.prepare('SELECT * FROM invites WHERE token = ?').get(req.params.token);
   if (!inv) return res.status(404).json({ error: 'Convite inválido' });
-  if (inv.used_at) return res.status(410).json({ error: 'Convite já utilizado' });
 
   const ownerId = db.prepare('SELECT owner_id FROM boards WHERE id = ?').get(inv.board_id)?.owner_id;
   if (ownerId === req.user.id)
     return res.status(400).json({ error: 'Você é owner deste quadro' });
+
+  const allowed = db.prepare('SELECT email, used_at FROM invite_allowed_emails WHERE invite_id = ?').all(inv.id);
+  const isLegacy = allowed.length === 0;
+
+  if (isLegacy) {
+    // Old flow: single-use, anyone-with-link.
+    if (inv.used_at) return res.status(410).json({ error: 'Convite já utilizado' });
+  } else {
+    // New flow: email must be in whitelist and not already used.
+    const userEmail = (req.user.email || '').toLowerCase();
+    const slot = allowed.find((a) => a.email === userEmail);
+    if (!slot) return res.status(403).json({ error: 'Você não foi convidado para este quadro' });
+    if (slot.used_at) return res.status(410).json({ error: 'Você já entrou neste quadro' });
+  }
 
   // Add as member (or update role if already a member)
   const existing = db.prepare('SELECT id FROM board_members WHERE board_id = ? AND user_id = ?')
@@ -754,7 +874,16 @@ app.post('/api/invites/:token/accept', (req, res) => {
     db.prepare('INSERT INTO board_members (board_id, user_id, role) VALUES (?, ?, ?)')
       .run(inv.board_id, req.user.id, inv.role);
   }
-  db.prepare('UPDATE invites SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(inv.id);
+
+  if (isLegacy) {
+    db.prepare('UPDATE invites SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(inv.id);
+  } else {
+    db.prepare(`UPDATE invite_allowed_emails
+                SET used_at = CURRENT_TIMESTAMP, user_id = ?
+                WHERE invite_id = ? AND email = ?`)
+      .run(req.user.id, inv.id, req.user.email.toLowerCase());
+  }
+
   logBoardActivity(req, 'member.added', inv.board_id, 'member', req.user.id,
     { name: req.user.name, role: inv.role });
   res.json({ board_id: inv.board_id, role: inv.role });

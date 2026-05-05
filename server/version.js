@@ -12,6 +12,15 @@
 
 const releases = [
   {
+    version: '1.4.0',
+    date: '2026-05-05',
+    notes: [
+      '🔐 Convidar pessoas por email — ao gerar um link de convite, agora você lista os emails autorizados; só quem entrar com um desses emails consegue acessar o quadro',
+      '👥 Um link funciona pra equipe inteira — adicione vários emails e mande o mesmo link no grupo; cada pessoa entra com a conta dela',
+      '📋 Convites pendentes — veja quem já entrou e quem ainda não, e revogue links a qualquer momento',
+    ],
+  },
+  {
     version: '1.3.2',
     date: '2026-05-05',
     notes: [
