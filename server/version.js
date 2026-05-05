@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.4.1',
+    date: '2026-05-05',
+    notes: [
+      '🏠 Clicar no logo "Flux" da sidebar agora volta direto pro quadro Kanban — atalho rápido pra sair de Atividade, Analytics ou Settings sem ter que clicar duas vezes',
+    ],
+  },
+  {
     version: '1.4.0',
     date: '2026-05-05',
     notes: [

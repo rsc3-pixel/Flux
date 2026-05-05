@@ -2731,6 +2731,16 @@ function setupEventListeners() {
     if (!e.target.closest('.board-more')) $('#boardMoreMenu')?.classList.add('hidden');
   });
 
+  // Brand "home" — clicking the Flux logo/title in the sidebar takes the user
+  // back to the kanban view of the current board. If they're in a workspace-
+  // level view (Activity/Analytics/Settings), goes back to the last per-board
+  // view they had open. No-op if no board is loaded yet.
+  $('#brandHome')?.addEventListener('click', () => {
+    if (!state.currentBoardId) return;
+    const target = WORKSPACE_VIEWS.has(state.view) ? (state.lastBoardView || 'kanban') : 'kanban';
+    switchView(target);
+  });
+
   // Members modal
   $('#membersBtn').addEventListener('click', openMembersModal);
   $('#generateInviteBtn').addEventListener('click', generateInvite);
