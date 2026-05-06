@@ -1658,6 +1658,84 @@ body {
   border-color: var(--color-primary);
 }
 .chips-error { color: var(--color-danger); font-size: 12px; margin: 0; }
+
+/* Extra boards selector — collapsible list of other manageable boards the
+   invite should also cover. Hidden when there's nothing to add. */
+.invite-extra-boards {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  background: var(--color-surface);
+}
+.invite-extra-boards summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text);
+  padding: 4px 0;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.invite-extra-boards summary::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 0.15s;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+.invite-extra-boards[open] summary::before { transform: rotate(90deg); }
+.invite-extra-boards summary::-webkit-details-marker { display: none; }
+.invite-extra-boards .extra-boards-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+.extra-boards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border);
+}
+.extra-board-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.extra-board-row input[type="checkbox"] { cursor: pointer; }
+.extra-board-row .eb-color {
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--eb-color, var(--color-text-secondary));
+  flex-shrink: 0;
+}
+.extra-board-row .eb-title { flex: 1; word-break: break-word; }
+
+.pending-invite-boards-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.pi-board-tag {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.pi-board-tag.primary { color: var(--color-primary); border-color: var(--color-primary); }
 .chips-list {
   display: flex;
   flex-direction: column;

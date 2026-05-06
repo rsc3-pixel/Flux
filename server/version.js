@@ -12,6 +12,14 @@
 
 const releases = [
   {
+    version: '1.4.2',
+    date: '2026-05-05',
+    notes: [
+      '🗂️ Convidar para vários quadros de uma vez — ao gerar um link de convite, marque também outros quadros que você gerencia; um link só dá acesso a todos eles',
+      '👁️ Convites pendentes mostram quais quadros são cobertos quando o convite é multi-quadro',
+    ],
+  },
+  {
     version: '1.4.1',
     date: '2026-05-05',
     notes: [

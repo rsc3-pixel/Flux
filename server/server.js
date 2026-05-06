@@ -764,9 +764,9 @@ function normalizeEmailList(input, max = 20) {
 }
 
 app.post('/api/boards/:id/invites', (req, res) => {
-  const boardId = parseInt(req.params.id);
-  if (!auth.canManage(req.user.id, boardId))
-    return res.status(403).json({ error: 'Sem permissão' });
+  const primaryBoardId = parseInt(req.params.id);
+  if (!auth.canManage(req.user.id, primaryBoardId))
+    return res.status(403).json({ error: 'Sem permissão neste quadro' });
   const role = ['admin', 'membro'].includes(req.body.role) ? req.body.role : 'membro';
 
   // New flow: emails array required. Each email is whitelisted for this invite.
@@ -774,38 +774,72 @@ app.post('/api/boards/:id/invites', (req, res) => {
   try { emails = normalizeEmailList(req.body.emails); }
   catch (e) { return res.status(e.code || 400).json({ error: e.msg || 'Erro' }); }
 
-  // Don't accept the owner's own email (they're already in)
-  const ownerEmail = db.prepare(`
-    SELECT u.email FROM users u JOIN boards b ON b.owner_id = u.id WHERE b.id = ?
-  `).get(boardId)?.email;
-  if (ownerEmail && emails.includes(ownerEmail.toLowerCase())) {
-    return res.status(400).json({ error: 'Você já é o dono deste quadro' });
+  // Multi-board: optional list of additional boards this invite also covers.
+  // Validate each id is a manageable board for this user (no IDOR), dedupe,
+  // drop the primary if it accidentally appears, cap at 10 extras (11 total
+  // including the primary) so a typo doesn't generate a sprawling invite.
+  let extraBoards = [];
+  if (req.body.extra_boards != null) {
+    if (!Array.isArray(req.body.extra_boards))
+      return res.status(400).json({ error: 'extra_boards deve ser uma lista' });
+    if (req.body.extra_boards.length > 10)
+      return res.status(400).json({ error: 'Máximo 10 quadros adicionais por convite' });
+    const seen = new Set([primaryBoardId]);
+    for (const raw of req.body.extra_boards) {
+      const bid = parseInt(raw);
+      if (!Number.isInteger(bid) || bid <= 0 || seen.has(bid)) continue;
+      if (!auth.canManage(req.user.id, bid))
+        return res.status(403).json({ error: 'Sem permissão em algum dos quadros selecionados' });
+      seen.add(bid);
+      extraBoards.push(bid);
+    }
+  }
+  const allBoardIds = [primaryBoardId, ...extraBoards];
+
+  // Reject if any of the invited emails belongs to the owner of ANY of the
+  // covered boards (they're already in by definition).
+  const ownerEmails = new Set(
+    db.prepare(`
+      SELECT u.email FROM users u JOIN boards b ON b.owner_id = u.id
+      WHERE b.id IN (${allBoardIds.map(() => '?').join(',')})
+    `).all(...allBoardIds).map((r) => r.email?.toLowerCase()).filter(Boolean)
+  );
+  for (const e of emails) {
+    if (ownerEmails.has(e)) {
+      return res.status(400).json({ error: `${e} já é dono de um dos quadros` });
+    }
   }
 
   const token = auth.newToken();
   const result = db.transaction(() => {
     const info = db.prepare('INSERT INTO invites (board_id, token, role, created_by) VALUES (?, ?, ?, ?)')
-                   .run(boardId, token, role, req.user.id);
+                   .run(primaryBoardId, token, role, req.user.id);
     const inviteId = info.lastInsertRowid;
     const insertEmail = db.prepare('INSERT INTO invite_allowed_emails (invite_id, email) VALUES (?, ?)');
     for (const e of emails) insertEmail.run(inviteId, e);
+    const insertBoard = db.prepare('INSERT INTO invite_boards (invite_id, board_id) VALUES (?, ?)');
+    for (const bid of extraBoards) insertBoard.run(inviteId, bid);
     return inviteId;
   })();
 
-  res.status(201).json({ id: result, token, role, emails });
+  res.status(201).json({ id: result, token, role, emails, board_ids: allBoardIds });
 });
 
 // List pending invites for a board, with the per-email status (entered / pending).
-// Used by the Members modal's "Convites pendentes" section.
+// Includes invites where this board is either the primary OR an extra. Used by
+// the Members modal's "Convites pendentes" section.
 app.get('/api/boards/:id/invites', (req, res) => {
   const boardId = parseInt(req.params.id);
   if (!auth.canManage(req.user.id, boardId))
     return res.status(403).json({ error: 'Sem permissão' });
 
   const invites = db.prepare(`
-    SELECT id, token, role, created_at, used_at, created_by
-    FROM invites WHERE board_id = ? ORDER BY created_at DESC
-  `).all(boardId);
+    SELECT id, token, role, created_at, used_at, created_by, board_id AS primary_board_id
+    FROM invites
+    WHERE board_id = ?
+       OR id IN (SELECT invite_id FROM invite_boards WHERE board_id = ?)
+    ORDER BY created_at DESC
+  `).all(boardId, boardId);
 
   const emailStmt = db.prepare(`
     SELECT a.email, a.used_at, u.name AS user_name
@@ -814,9 +848,18 @@ app.get('/api/boards/:id/invites', (req, res) => {
     WHERE a.invite_id = ?
     ORDER BY a.email
   `);
+  const boardsStmt = db.prepare(`
+    SELECT b.id, b.title FROM (
+      SELECT ? AS id
+      UNION
+      SELECT board_id FROM invite_boards WHERE invite_id = ?
+    ) AS x JOIN boards b ON b.id = x.id
+    ORDER BY b.id
+  `);
 
   const out = invites.map((inv) => {
     const emails = emailStmt.all(inv.id);
+    const boards = boardsStmt.all(inv.primary_board_id, inv.id);
     return {
       id: inv.id,
       token: inv.token,
@@ -826,7 +869,9 @@ app.get('/api/boards/:id/invites', (req, res) => {
       // can render "single-use, used by ?" instead of a list of emails.
       legacy: emails.length === 0,
       used_at: inv.used_at,
-      emails, // [{email, used_at, user_name}]
+      emails,                       // [{email, used_at, user_name}]
+      boards,                       // [{id, title}] — every board this invite covers
+      primary_board_id: inv.primary_board_id,
     };
   });
   res.json(out);
@@ -847,46 +892,66 @@ app.post('/api/invites/:token/accept', (req, res) => {
   const inv = db.prepare('SELECT * FROM invites WHERE token = ?').get(req.params.token);
   if (!inv) return res.status(404).json({ error: 'Convite inválido' });
 
-  const ownerId = db.prepare('SELECT owner_id FROM boards WHERE id = ?').get(inv.board_id)?.owner_id;
-  if (ownerId === req.user.id)
-    return res.status(400).json({ error: 'Você é owner deste quadro' });
+  // Build the full list of boards this invite covers: the primary (invites.board_id)
+  // plus any extras in invite_boards. For legacy single-board invites the extras
+  // table is empty so this collapses to just [board_id].
+  const extraIds = db.prepare('SELECT board_id FROM invite_boards WHERE invite_id = ?')
+                     .all(inv.id).map((r) => r.board_id);
+  const allBoardIds = [inv.board_id, ...extraIds];
+
+  // Owner-of-all-boards short-circuit: if the user already owns every board the
+  // invite covers, accepting is a no-op (and the legacy "you're owner" message
+  // is still accurate). For mixed cases, we'll just skip boards they own below.
+  const ownedBoards = new Set(
+    db.prepare(`SELECT id FROM boards WHERE owner_id = ? AND id IN (${allBoardIds.map(()=>'?').join(',')})`)
+      .all(req.user.id, ...allBoardIds).map((r) => r.id)
+  );
+  if (ownedBoards.size === allBoardIds.length) {
+    return res.status(400).json({ error: 'Você já é o dono dos quadros deste convite' });
+  }
 
   const allowed = db.prepare('SELECT email, used_at FROM invite_allowed_emails WHERE invite_id = ?').all(inv.id);
   const isLegacy = allowed.length === 0;
 
   if (isLegacy) {
-    // Old flow: single-use, anyone-with-link.
     if (inv.used_at) return res.status(410).json({ error: 'Convite já utilizado' });
   } else {
-    // New flow: email must be in whitelist and not already used.
     const userEmail = (req.user.email || '').toLowerCase();
     const slot = allowed.find((a) => a.email === userEmail);
     if (!slot) return res.status(403).json({ error: 'Você não foi convidado para este quadro' });
     if (slot.used_at) return res.status(410).json({ error: 'Você já entrou neste quadro' });
   }
 
-  // Add as member (or update role if already a member)
-  const existing = db.prepare('SELECT id FROM board_members WHERE board_id = ? AND user_id = ?')
-                     .get(inv.board_id, req.user.id);
-  if (existing) {
-    db.prepare('UPDATE board_members SET role = ? WHERE id = ?').run(inv.role, existing.id);
-  } else {
-    db.prepare('INSERT INTO board_members (board_id, user_id, role) VALUES (?, ?, ?)')
-      .run(inv.board_id, req.user.id, inv.role);
-  }
+  // Add the user as a member of every covered board (skip ones they already own).
+  const findExisting = db.prepare('SELECT id FROM board_members WHERE board_id = ? AND user_id = ?');
+  const updateExisting = db.prepare('UPDATE board_members SET role = ? WHERE id = ?');
+  const insertNew = db.prepare('INSERT INTO board_members (board_id, user_id, role) VALUES (?, ?, ?)');
+  db.transaction(() => {
+    for (const bid of allBoardIds) {
+      if (ownedBoards.has(bid)) continue;
+      const existing = findExisting.get(bid, req.user.id);
+      if (existing) updateExisting.run(inv.role, existing.id);
+      else          insertNew.run(bid, req.user.id, inv.role);
+    }
+    if (isLegacy) {
+      db.prepare('UPDATE invites SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(inv.id);
+    } else {
+      db.prepare(`UPDATE invite_allowed_emails
+                  SET used_at = CURRENT_TIMESTAMP, user_id = ?
+                  WHERE invite_id = ? AND email = ?`)
+        .run(req.user.id, inv.id, req.user.email.toLowerCase());
+    }
+  })();
 
-  if (isLegacy) {
-    db.prepare('UPDATE invites SET used_at = CURRENT_TIMESTAMP WHERE id = ?').run(inv.id);
-  } else {
-    db.prepare(`UPDATE invite_allowed_emails
-                SET used_at = CURRENT_TIMESTAMP, user_id = ?
-                WHERE invite_id = ? AND email = ?`)
-      .run(req.user.id, inv.id, req.user.email.toLowerCase());
+  // Log per board so the activity feed of each one shows the new member
+  for (const bid of allBoardIds) {
+    if (ownedBoards.has(bid)) continue;
+    logBoardActivity(req, 'member.added', bid, 'member', req.user.id,
+      { name: req.user.name, role: inv.role });
   }
-
-  logBoardActivity(req, 'member.added', inv.board_id, 'member', req.user.id,
-    { name: req.user.name, role: inv.role });
-  res.json({ board_id: inv.board_id, role: inv.role });
+  // Frontend redirects to the first non-owned board (usually the primary)
+  const landingBoardId = allBoardIds.find((bid) => !ownedBoards.has(bid)) || inv.board_id;
+  res.json({ board_id: landingBoardId, role: inv.role, board_ids: allBoardIds });
 });
 
 // =================================================================

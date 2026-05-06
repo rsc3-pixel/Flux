@@ -1995,6 +1995,8 @@ async function wizardFinish() {
 // Per-modal-open: list of emails the user typed into the chips input but
 // hasn't yet submitted as a single invite. Reset when the modal opens.
 let inviteEmailsBuffer = [];
+// Set of extra board IDs (besides the current board) the new invite covers.
+let inviteExtraBoards = new Set();
 
 async function openMembersModal() {
   if (!state.currentBoard) return;
@@ -2002,6 +2004,7 @@ async function openMembersModal() {
 
   // Reset invite composer to a clean state every open
   inviteEmailsBuffer = [];
+  inviteExtraBoards = new Set();
   $('#inviteEmailInput').value = '';
   $('#inviteEmailError').classList.add('hidden');
   $('#inviteLinkArea').classList.add('hidden');
@@ -2012,7 +2015,64 @@ async function openMembersModal() {
   $('#pendingInvitesSection').classList.toggle('hidden', !canManage);
 
   await renderMembersList();
-  if (canManage) await renderPendingInvites();
+  if (canManage) {
+    renderExtraBoardsList();
+    await renderPendingInvites();
+  }
+}
+
+// Renders the checkbox list of "other boards I manage" the user can include
+// in the invite. The current board is implicit (always covered) and excluded
+// here. Hides the section entirely when there's nothing to add.
+function renderExtraBoardsList() {
+  const wrap = $('#extraBoardsList');
+  const section = $('#inviteExtraBoardsSection');
+  const counter = $('#extraBoardsCount');
+  wrap.innerHTML = '';
+
+  // Filter to boards the user can manage: owner OR admin role on the board.
+  // state.boards comes from /api/boards, which doesn't include role. We treat
+  // owned boards (where state.user.id == owner_id) plus boards we know we're
+  // admin/owner of via state.currentBoard.role. Cheapest correct heuristic:
+  // assume the user can manage any board they own. For boards where they're
+  // a member, the server will reject them at POST time (canManage check), so
+  // worst case the UI offers an option that fails — acceptable safety net.
+  const candidates = (state.boards || []).filter((b) =>
+    b.id !== state.currentBoardId && b.owner_id === state.user?.id
+  );
+
+  if (candidates.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  for (const b of candidates) {
+    const row = document.createElement('label');
+    row.className = 'extra-board-row';
+    const id = `eb-${b.id}`;
+    const accent = /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#6b7280';
+    row.style.setProperty('--eb-color', accent);
+    row.innerHTML = `
+      <input type="checkbox" id="${id}" data-board-id="${b.id}" />
+      <span class="eb-color"></span>
+      <span class="eb-title">${escapeHtml(b.title)}</span>
+    `;
+    const cb = row.querySelector('input[type="checkbox"]');
+    cb.checked = inviteExtraBoards.has(b.id);
+    cb.addEventListener('change', () => {
+      if (cb.checked) inviteExtraBoards.add(b.id);
+      else            inviteExtraBoards.delete(b.id);
+      updateExtraBoardsCounter();
+    });
+    wrap.appendChild(row);
+  }
+  updateExtraBoardsCounter();
+}
+
+function updateExtraBoardsCounter() {
+  const n = inviteExtraBoards.size;
+  $('#extraBoardsCount').textContent = n === 0 ? '' : `(${n} selecionado${n > 1 ? 's' : ''})`;
 }
 
 function renderInviteChips() {
@@ -2160,6 +2220,24 @@ async function renderPendingInvites() {
     const body = document.createElement('div');
     body.className = 'pending-invite-body';
 
+    // Show the list of boards this invite covers (only when more than one,
+    // since single-board is the implicit default).
+    if (Array.isArray(inv.boards) && inv.boards.length > 1) {
+      const boardsLine = document.createElement('div');
+      boardsLine.className = 'pending-invite-boards-line';
+      const label = document.createElement('span');
+      label.className = 'muted-small';
+      label.textContent = `Cobre ${inv.boards.length} quadros: `;
+      boardsLine.appendChild(label);
+      for (const b of inv.boards) {
+        const tag = document.createElement('span');
+        tag.className = 'pi-board-tag' + (b.id === inv.primary_board_id ? ' primary' : '');
+        tag.textContent = b.title;
+        boardsLine.appendChild(tag);
+      }
+      body.appendChild(boardsLine);
+    }
+
     if (inv.legacy) {
       const note = document.createElement('p');
       note.className = 'muted-small';
@@ -2298,6 +2376,7 @@ async function generateInvite() {
     inv = await api.post(`/api/boards/${state.currentBoardId}/invites`, {
       role,
       emails: inviteEmailsBuffer,
+      extra_boards: [...inviteExtraBoards],
     });
   } catch (err) {
     alert('Falha ao gerar convite. Verifique os emails e tente novamente.');
@@ -2316,7 +2395,9 @@ async function generateInvite() {
   // Reset the composer so the "Generate" button reflects the empty state and
   // the user can either copy the link they just made or compose another batch.
   inviteEmailsBuffer = [];
+  inviteExtraBoards = new Set();
   renderInviteChips();
+  renderExtraBoardsList();
   btn.textContent = origLabel;
   await renderPendingInvites();
 }

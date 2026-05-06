@@ -161,6 +161,22 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
 `);
 
+// ---- INVITE EXTRA BOARDS (Iteration 6.1) ----
+// One invite can cover multiple boards. invites.board_id keeps the "primary"
+// board (for back-compat with the legacy single-board flow); any additional
+// boards live here. Accepting the invite makes the user a member of the
+// primary AND every board listed here.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS invite_boards (
+    invite_id INTEGER NOT NULL,
+    board_id  INTEGER NOT NULL,
+    PRIMARY KEY (invite_id, board_id),
+    FOREIGN KEY (invite_id) REFERENCES invites(id) ON DELETE CASCADE,
+    FOREIGN KEY (board_id)  REFERENCES boards(id)  ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_invite_boards_board ON invite_boards(board_id);
+`);
+
 // ---- INVITE ALLOWED EMAILS (Iteration 6) ----
 // Each invite can carry a whitelist of emails. The link only works for users
 // whose login email matches one of the entries. Multiple emails per invite =
