@@ -184,6 +184,11 @@ app.post('/api/auth/login', authLimiter, (req, res) => {
   if (!user || !ok)
     return res.status(401).json({ error: 'Email ou senha inválidos' });
 
+  // Suspended accounts can't log in — owner needs to reactivate first.
+  // 403 (not 401) so the user knows the credentials were correct, just blocked.
+  if (user.suspended_at)
+    return res.status(403).json({ error: 'Conta suspensa. Entre em contato com o administrador.' });
+
   auth.createSession(res, user.id);
   res.json({ id: user.id, email: user.email, name: user.name });
 });
@@ -232,6 +237,61 @@ app.get('/api/admin/flags', auth.requireOwner, (req, res) => {
     updated_at: f.updated_at,
     updated_by_name: f.updated_by_name,
   })));
+});
+
+// User listing for the admin panel. Includes the basics + activity proxies
+// (last_seen via most-recent session, board/card counts) so the owner has
+// enough context to decide whether to suspend/delete someone.
+app.get('/api/admin/users', auth.requireOwner, (req, res) => {
+  const users = db.prepare(`
+    SELECT
+      u.id, u.email, u.name, u.created_at, u.is_owner, u.suspended_at,
+      (SELECT MAX(created_at) FROM sessions WHERE user_id = u.id) AS last_seen,
+      (SELECT COUNT(*) FROM boards WHERE owner_id = u.id) AS boards_owned,
+      (SELECT COUNT(*) FROM board_members WHERE user_id = u.id) AS boards_member,
+      (SELECT COUNT(*) FROM cards c
+        JOIN lists l ON l.id = c.list_id
+        JOIN boards b ON b.id = l.board_id
+        WHERE b.owner_id = u.id) AS cards_in_owned_boards
+    FROM users u
+    ORDER BY u.created_at DESC
+  `).all();
+  res.json(users.map(u => ({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    created_at: u.created_at,
+    is_owner: !!u.is_owner,
+    suspended_at: u.suspended_at,
+    last_seen: u.last_seen,
+    boards_owned: u.boards_owned,
+    boards_member: u.boards_member,
+    cards: u.cards_in_owned_boards,
+  })));
+});
+
+// Suspend/reactivate a user. Body: { suspended: true|false }. The owner can't
+// suspend themselves — would lock the admin panel out.
+app.patch('/api/admin/users/:id/suspend', auth.requireOwner, (req, res) => {
+  const targetId = parseInt(req.params.id);
+  if (!Number.isInteger(targetId) || targetId <= 0)
+    return res.status(400).json({ error: 'ID inválido' });
+  if (targetId === req.user.id)
+    return res.status(400).json({ error: 'Você não pode suspender a si mesmo' });
+
+  const target = db.prepare('SELECT id, email, suspended_at FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+  const suspend = req.body?.suspended === true;
+  if (suspend) {
+    db.prepare('UPDATE users SET suspended_at = CURRENT_TIMESTAMP WHERE id = ?').run(targetId);
+    // Kill any open sessions immediately so the user gets bounced on next request.
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
+  } else {
+    db.prepare('UPDATE users SET suspended_at = NULL WHERE id = ?').run(targetId);
+  }
+  const updated = db.prepare('SELECT id, email, suspended_at FROM users WHERE id = ?').get(targetId);
+  res.json({ id: updated.id, email: updated.email, suspended_at: updated.suspended_at });
 });
 
 // Toggle a flag's enabled state and/or its maintenance message. Body fields

@@ -343,19 +343,93 @@ async function renderAdmin() {
   if (!root) return;
   root.innerHTML = '<p class="muted-small">Carregando...</p>';
   try {
-    const flags = await api.get('/api/admin/flags');
-    root.innerHTML = '';
-    const widget = document.createElement('div');
-    widget.className = 'dashboard-widget';
-    widget.innerHTML = `
-      <h3>Feature flags</h3>
-      <p class="muted-small">Liga/desliga módulos sem precisar de deploy. A mensagem opcional aparece no lugar da feature pros usuários quando ela está desligada.</p>
-      <div class="admin-flags-list" id="adminFlagsList"></div>
+    const [flags, users] = await Promise.all([
+      api.get('/api/admin/flags'),
+      api.get('/api/admin/users'),
+    ]);
+    root.innerHTML = `
+      <div class="dashboard-widget">
+        <h3>Feature flags</h3>
+        <p class="muted-small">Liga/desliga módulos sem precisar de deploy. A mensagem opcional aparece no lugar da feature pros usuários quando ela está desligada.</p>
+        <div class="admin-flags-list" id="adminFlagsList"></div>
+      </div>
+      <div class="dashboard-widget">
+        <h3>Usuários (${users.length})</h3>
+        <p class="muted-small">Substituí o uso de <code>npm run list-users</code> na VM. Suspender bloqueia login mas não apaga dados.</p>
+        <input type="search" id="adminUsersSearch" placeholder="Filtrar por email ou nome..." class="admin-users-search" />
+        <div id="adminUsersList" class="admin-users-list"></div>
+      </div>
     `;
-    root.appendChild(widget);
     renderAdminFlags(flags);
+    renderAdminUsers(users);
+    $('#adminUsersSearch').addEventListener('input', (e) => {
+      renderAdminUsers(users, e.target.value.trim().toLowerCase());
+    });
   } catch {
     root.innerHTML = '<p class="muted-small" style="color: var(--color-danger);">Sem acesso ao painel admin.</p>';
+  }
+}
+
+function renderAdminUsers(users, filter = '') {
+  const wrap = $('#adminUsersList');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const filtered = filter
+    ? users.filter(u => u.email.toLowerCase().includes(filter) || (u.name || '').toLowerCase().includes(filter))
+    : users;
+  if (filtered.length === 0) {
+    wrap.innerHTML = '<p class="muted-small">Nenhum usuário encontrado.</p>';
+    return;
+  }
+  for (const u of filtered) {
+    const row = document.createElement('div');
+    row.className = 'admin-user-row' + (u.suspended_at ? ' suspended' : '');
+    const isMe = u.id === state.user?.id;
+    const lastSeen = u.last_seen ? formatRelativeTime(u.last_seen) : 'nunca';
+    const tags = [
+      u.is_owner ? '<span class="admin-user-tag owner">owner</span>' : '',
+      u.suspended_at ? '<span class="admin-user-tag suspended">suspenso</span>' : '',
+      isMe ? '<span class="admin-user-tag self">você</span>' : '',
+    ].filter(Boolean).join('');
+
+    // Owner can't suspend themselves (server enforces too) — hide the button.
+    const action = isMe
+      ? ''
+      : (u.suspended_at
+          ? `<button class="btn btn-ghost" data-action="reactivate" data-user-id="${u.id}">Reativar</button>`
+          : `<button class="btn btn-ghost" data-action="suspend"    data-user-id="${u.id}">Suspender</button>`);
+
+    row.innerHTML = `
+      <div class="admin-user-avatar">${avatarImg(u.email, 36, u.name)}</div>
+      <div class="admin-user-info">
+        <div class="admin-user-name"><strong>${escapeHtml(u.name || '(sem nome)')}</strong> ${tags}</div>
+        <div class="admin-user-email">${escapeHtml(u.email)}</div>
+        <div class="admin-user-stats">
+          ${u.boards_owned} quadro(s) próprio(s) · ${u.boards_member} compartilhado(s) · ${u.cards} card(s) · cadastrado ${formatRelativeTime(u.created_at)} · último acesso ${lastSeen}
+        </div>
+      </div>
+      <div class="admin-user-actions">${action}</div>
+    `;
+    const btn = row.querySelector('button[data-action]');
+    if (btn) btn.addEventListener('click', () => toggleSuspend(u, btn.dataset.action));
+    wrap.appendChild(row);
+  }
+}
+
+async function toggleSuspend(user, action) {
+  const suspending = action === 'suspend';
+  const confirmMsg = suspending
+    ? `Suspender ${user.name || user.email}? Eles vão perder acesso até você reativar.`
+    : `Reativar ${user.name || user.email}?`;
+  if (!confirm(confirmMsg)) return;
+  try {
+    await api.patch(`/api/admin/users/${user.id}/suspend`, { suspended: suspending });
+    // Re-fetch the list to reflect the change (status, last_seen reset, etc.)
+    const fresh = await api.get('/api/admin/users');
+    const filter = $('#adminUsersSearch')?.value.trim().toLowerCase() || '';
+    renderAdminUsers(fresh, filter);
+  } catch {
+    alert('Falha ao atualizar suspensão. Tenta de novo.');
   }
 }
 

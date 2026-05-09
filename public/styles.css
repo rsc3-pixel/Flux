@@ -1395,6 +1395,47 @@ body {
   margin: 0;
 }
 
+/* Users table inside the admin panel */
+.admin-users-search {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  margin: 12px 0;
+}
+.admin-users-search:focus { outline: none; border-color: var(--color-primary); }
+.admin-users-list { display: flex; flex-direction: column; gap: 8px; }
+.admin-user-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--color-surface-2);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+.admin-user-row.suspended { opacity: 0.55; }
+.admin-user-avatar { flex-shrink: 0; }
+.admin-user-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.admin-user-name { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--color-text); flex-wrap: wrap; }
+.admin-user-email { font-size: 12px; color: var(--color-text-secondary); word-break: break-all; }
+.admin-user-stats { font-size: 11px; color: var(--color-text-secondary); }
+.admin-user-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-user-tag.owner     { background: var(--color-primary-soft); color: var(--color-primary); }
+.admin-user-tag.suspended { background: rgba(239, 68, 68, 0.15); color: var(--color-danger); }
+.admin-user-tag.self      { background: var(--color-surface); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+.admin-user-actions { flex-shrink: 0; }
+
 .chart-container {
   flex: 1;
   display: flex;

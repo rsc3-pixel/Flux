@@ -57,7 +57,17 @@ function loadUser(req, res, next) {
         AND (expires_at IS NULL OR expires_at > datetime('now'))
     `).get(token);
     if (session) {
-      req.user = db.prepare('SELECT id, email, name, is_owner FROM users WHERE id = ?').get(session.user_id);
+      const user = db.prepare(
+        'SELECT id, email, name, is_owner, suspended_at FROM users WHERE id = ?'
+      ).get(session.user_id);
+      // Suspended users get logged out on every request — drop their token
+      // so the next request behaves as if they were never authenticated.
+      if (user && user.suspended_at) {
+        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+        res.clearCookie(SESSION_COOKIE);
+      } else {
+        req.user = user;
+      }
     } else {
       // Token invalid or expired: clear the cookie + delete any stale row
       db.prepare('DELETE FROM sessions WHERE token = ?').run(token);

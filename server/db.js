@@ -161,6 +161,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
 `);
 
+// ---- USER SUSPENSION (Iteration 7.2) ----
+// Soft-disable an account from the admin panel without deleting it. Suspended
+// users can't log in (auth.loadUser drops their sessions) and can't authenticate
+// new ones. Owners can't suspend themselves (server-enforced) — would lock the
+// admin panel.
+const userColsForSuspend = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+if (!userColsForSuspend.includes('suspended_at')) {
+  db.exec('ALTER TABLE users ADD COLUMN suspended_at DATETIME');
+}
+
 // ---- FEATURE FLAGS (Iteration 7.1) ----
 // Toggleable modules. Owners flip values from the admin panel; the frontend
 // fetches them on boot via /api/flags and hides UI accordingly. Backend

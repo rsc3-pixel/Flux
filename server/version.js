@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.5.2',
+    date: '2026-05-09',
+    notes: [
+      '👥 Painel Admin agora tem gestão de usuários — listar, buscar, suspender/reativar contas direto do app (sem precisar de SSH)',
+    ],
+  },
+  {
     version: '1.5.1',
     date: '2026-05-09',
     notes: [
