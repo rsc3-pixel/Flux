@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.4.3',
+    date: '2026-05-09',
+    notes: [
+      '🛠️ Botão "Reportar bug" voltou a funcionar — se você tentou reportar algo recentemente e apareceu "Sistema de envio de bugs indisponível", pode mandar agora normalmente',
+    ],
+  },
+  {
     version: '1.4.2',
     date: '2026-05-05',
     notes: [
