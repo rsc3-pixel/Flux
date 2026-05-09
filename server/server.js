@@ -92,14 +92,21 @@ function logBoardActivity(req, action, boardId, entityType, entityId, details) {
   });
 }
 
+// Reads the current state of the 'registration_open' feature flag. Owner-
+// toggleable from the admin panel; default true if the row is missing.
+function isRegistrationOpen() {
+  const f = db.prepare("SELECT enabled FROM feature_flags WHERE key = 'registration_open'").get();
+  return !f || !!f.enabled;
+}
+
 // Public config endpoint — lets the front-end know whether to show the
 // "Criar conta" tab on the auth screen.
 app.get('/api/config', (_req, res) => {
   const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
   res.json({
     // Always allow registration when there are no users yet (bootstrap),
-    // otherwise honor the ALLOW_REGISTRATION env var (default on).
-    registrationEnabled: userCount === 0 || process.env.ALLOW_REGISTRATION !== 'false',
+    // otherwise honor the registration_open feature flag.
+    registrationEnabled: userCount === 0 || isRegistrationOpen(),
   });
 });
 
@@ -122,13 +129,13 @@ app.post('/api/auth/register', authLimiter, (req, res) => {
 
   const emailLower = email.toLowerCase();
 
-  // Honor ALLOW_REGISTRATION=false, with TWO bootstrap exceptions:
+  // Honor the registration_open feature flag, with TWO bootstrap exceptions:
   //  1. Very first user (zero accounts) — always allowed.
   //  2. User is registering with an inviteToken whose whitelist includes
   //     this email — they were explicitly invited by an existing user, so
   //     letting them register is the entire point of the invite.
   const userCount = db.prepare('SELECT COUNT(*) AS c FROM users').get().c;
-  if (userCount > 0 && process.env.ALLOW_REGISTRATION === 'false') {
+  if (userCount > 0 && !isRegistrationOpen()) {
     let hasValidInvite = false;
     if (typeof inviteToken === 'string' && inviteToken) {
       const inv = db.prepare('SELECT id FROM invites WHERE token = ?').get(inviteToken);

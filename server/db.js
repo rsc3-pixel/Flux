@@ -193,6 +193,12 @@ const seedFlag = db.prepare('INSERT OR IGNORE INTO feature_flags (key, enabled) 
 seedFlag.run('report_bug', 1);  // Default ON: bug-report button in sidebar
 seedFlag.run('invites', 1);     // Default ON: invite system (Members modal)
 seedFlag.run('financial', 0);   // Default OFF: future financial module (PR pending)
+// 'registration_open' migrates the old ALLOW_REGISTRATION env var into a
+// runtime-toggleable flag. Initial value reads the env (default closed if
+// ALLOW_REGISTRATION=false), so first boot preserves the previous behavior.
+// After that, INSERT OR IGNORE keeps whatever the owner toggled in the panel.
+const initialRegOpen = process.env.ALLOW_REGISTRATION === 'false' ? 0 : 1;
+seedFlag.run('registration_open', initialRegOpen);
 
 // ---- OWNER FLAG (Iteration 7) ----
 // Single is_owner=1 user has access to /admin (manage users, feature flags,

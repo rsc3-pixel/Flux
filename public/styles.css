@@ -2915,6 +2915,33 @@ body.preview-on { padding-top: 42px; }
   .calendar-cell { min-height: 80px; padding: 4px; }
   .day-number { font-size: 11px; }
   .calendar-card { font-size: 10px; padding: 2px 4px; }
+
+  /* Admin panel — keep things readable on phones */
+  .admin-content { padding: 8px 4px; }
+  /* Widgets ja empilham via .dashboard-grid 1fr — so reduzir padding interno */
+  #adminView .dashboard-widget { padding: 14px 14px; min-height: auto; }
+  /* Flag header: empilhar label/key/toggle quando largura aperta */
+  .admin-flag-header { gap: 6px; }
+  .admin-flag-toggle { margin-left: 0; width: 100%; justify-content: flex-end; }
+  /* User row: empilhar info acima, actions abaixo (avatar fica do lado da info) */
+  .admin-user-row {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px;
+  }
+  .admin-user-info { flex-basis: calc(100% - 56px); min-width: 0; }
+  .admin-user-actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+  .admin-user-actions .btn { padding: 6px 10px; font-size: 12px; }
+  .admin-user-stats { font-size: 10px; }
+  /* Search input full-width sem margem lateral problematica */
+  .admin-users-search { font-size: 14px; padding: 10px 12px; }
+  /* Delete-user modal: ocupar mais espaco util e botoes em coluna */
+  #deleteUserModal .modal { max-width: 100%; margin: 8px; }
+  #deleteUserModal .modal-footer { flex-direction: column-reverse; gap: 8px; }
+  #deleteUserModal .modal-footer .btn { width: 100%; }
 }
 
 @media (max-width: 480px) {

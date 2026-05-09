@@ -12,6 +12,14 @@
 
 const releases = [
   {
+    version: '1.5.5',
+    date: '2026-05-09',
+    notes: [
+      '📱 Painel Admin agora cabe direito no celular — layout responsivo nas seções de feature flags e usuários',
+      '🚪 Toggle "Cadastros abertos" no painel — você liga/desliga novos cadastros direto pela UI (antes era só via SSH)',
+    ],
+  },
+  {
     version: '1.5.4',
     date: '2026-05-09',
     notes: [

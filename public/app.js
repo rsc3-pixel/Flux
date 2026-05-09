@@ -374,9 +374,10 @@ function renderUserMenu() {
 // Friendly labels for known flags. Unknown flags fall back to the raw key —
 // so adding a new flag in the DB Just Works even before this map updates.
 const FLAG_META = {
-  report_bug: { label: 'Reportar bug',        desc: 'Botão "Reportar bug" na sidebar (envia email via Resend)' },
-  invites:    { label: 'Convites de membros', desc: 'Permite gerar links de convite no modal Membros do quadro' },
-  financial:  { label: 'Módulo financeiro',   desc: 'View "Finanças" para acompanhar contas e transações (em construção)' },
+  report_bug:        { label: 'Reportar bug',        desc: 'Botão "Reportar bug" na sidebar (envia email via Resend)' },
+  invites:           { label: 'Convites de membros', desc: 'Permite gerar links de convite no modal Membros do quadro' },
+  financial:         { label: 'Módulo financeiro',   desc: 'View "Finanças" para acompanhar contas e transações (em construção)' },
+  registration_open: { label: 'Cadastros abertos',   desc: 'Quando ON, qualquer pessoa pode criar conta na tela de login. Quando OFF, novos usuários só entram via convite com email na whitelist.' },
 };
 
 async function renderAdmin() {
