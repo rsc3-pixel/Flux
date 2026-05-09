@@ -1434,7 +1434,45 @@ body {
 .admin-user-tag.owner     { background: var(--color-primary-soft); color: var(--color-primary); }
 .admin-user-tag.suspended { background: rgba(239, 68, 68, 0.15); color: var(--color-danger); }
 .admin-user-tag.self      { background: var(--color-surface); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
-.admin-user-actions { flex-shrink: 0; }
+.admin-user-actions { flex-shrink: 0; display: flex; gap: 6px; }
+
+/* Danger button + delete-user modal */
+.btn-danger {
+  background: var(--color-danger);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) { background: #dc2626; }
+.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; background: var(--color-danger); }
+.btn-danger-ghost {
+  color: var(--color-danger);
+}
+.btn-danger-ghost:hover { background: rgba(239, 68, 68, 0.1); color: var(--color-danger); }
+
+.modal-danger { border-top: 4px solid var(--color-danger); }
+.delete-user-warning {
+  background: rgba(239, 68, 68, 0.1);
+  border-left: 3px solid var(--color-danger);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--color-text);
+}
+.delete-user-summary p { font-size: 13px; margin: 0 0 6px; }
+.delete-user-summary ul { font-size: 12px; margin: 0 0 14px 18px; padding: 0; }
+.delete-user-summary li { margin-bottom: 2px; }
+#deleteUserConfirm {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: ui-monospace, monospace;
+  color: var(--color-text);
+  background: var(--color-surface);
+  margin-top: 6px;
+}
+#deleteUserConfirm:focus { outline: none; border-color: var(--color-danger); }
 
 .chart-container {
   flex: 1;

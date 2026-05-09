@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.5.3',
+    date: '2026-05-09',
+    notes: [
+      '🗑️ Painel Admin agora permite excluir usuários permanentemente — com confirmação digitando o email pra evitar acidentes',
+    ],
+  },
+  {
     version: '1.5.2',
     date: '2026-05-09',
     notes: [

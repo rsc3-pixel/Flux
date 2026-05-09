@@ -694,6 +694,28 @@
     </div>
   </div>
 
+  <!-- Modal: confirm hard-delete of a user (admin only) -->
+  <div class="modal-backdrop hidden" id="deleteUserModal">
+    <div class="modal modal-danger">
+      <header class="modal-header">
+        <h3>Excluir usuário</h3>
+        <button class="modal-close" id="deleteUserCloseBtn" data-icon="x" data-icon-only="true" data-anim="pop" aria-label="Fechar"></button>
+      </header>
+      <div class="modal-body">
+        <p class="delete-user-warning">⚠️ <strong>Esta ação não pode ser desfeita.</strong></p>
+        <div id="deleteUserSummary" class="delete-user-summary"></div>
+        <label for="deleteUserConfirm" class="form-help">Pra confirmar, digite o email do usuário:</label>
+        <input type="email" id="deleteUserConfirm" autocomplete="off" inputmode="email" placeholder="email@exato.com" />
+        <footer class="modal-footer">
+          <div class="footer-right">
+            <button type="button" class="btn btn-ghost" id="deleteUserCancelBtn">Cancelar</button>
+            <button type="button" class="btn btn-danger" id="deleteUserConfirmBtn" disabled>Excluir permanentemente</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: what's new (release notes) -->
   <div class="modal-backdrop hidden" id="whatsNewModal">
     <div class="modal">

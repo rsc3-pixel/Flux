@@ -294,6 +294,44 @@ app.patch('/api/admin/users/:id/suspend', auth.requireOwner, (req, res) => {
   res.json({ id: updated.id, email: updated.email, suspended_at: updated.suspended_at });
 });
 
+// Hard-delete a user and everything they own. IRREVERSIBLE. Mirrors the
+// cleanup in scripts/delete-user.js (invites.created_by + boards.owner_id
+// don't cascade automatically, so we clear them by hand).
+//
+// Defense in depth:
+//  - Owner can't delete themselves (would orphan the platform)
+//  - Owner can't delete other owners (multi-owner scenario; nuke each other = bad)
+//  - Body must include confirm_email matching the target's email (case-insensitive)
+//    — protects against accidental clicks even when authenticated
+app.delete('/api/admin/users/:id', auth.requireOwner, (req, res) => {
+  const targetId = parseInt(req.params.id);
+  if (!Number.isInteger(targetId) || targetId <= 0)
+    return res.status(400).json({ error: 'ID inválido' });
+  if (targetId === req.user.id)
+    return res.status(400).json({ error: 'Você não pode excluir a si mesmo' });
+
+  const target = db.prepare('SELECT id, email, name, is_owner FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'Usuário não encontrado' });
+  if (target.is_owner)
+    return res.status(403).json({ error: 'Não é possível excluir outro owner' });
+
+  const confirm = String(req.body?.confirm_email || '').trim().toLowerCase();
+  if (confirm !== target.email.toLowerCase())
+    return res.status(400).json({ error: 'O email de confirmação não bate com o do usuário' });
+
+  // Same cleanup as scripts/delete-user.js. Wrapped in a transaction so a
+  // partial failure rolls back instead of leaving the DB in a half-deleted state.
+  db.transaction(() => {
+    db.prepare('DELETE FROM invites WHERE created_by = ?').run(target.id);
+    db.prepare('DELETE FROM boards WHERE owner_id = ?').run(target.id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
+    // sessions, board_members, workspaces, activity_log, board_user_order
+    // cascade automatically from users.
+  })();
+
+  res.json({ id: target.id, email: target.email, deleted: true });
+});
+
 // Toggle a flag's enabled state and/or its maintenance message. Body fields
 // are optional — pass only what you want to change.
 app.patch('/api/admin/flags/:key', auth.requireOwner, (req, res) => {

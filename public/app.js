@@ -392,12 +392,17 @@ function renderAdminUsers(users, filter = '') {
       isMe ? '<span class="admin-user-tag self">você</span>' : '',
     ].filter(Boolean).join('');
 
-    // Owner can't suspend themselves (server enforces too) — hide the button.
-    const action = isMe
-      ? ''
-      : (u.suspended_at
-          ? `<button class="btn btn-ghost" data-action="reactivate" data-user-id="${u.id}">Reativar</button>`
-          : `<button class="btn btn-ghost" data-action="suspend"    data-user-id="${u.id}">Suspender</button>`);
+    // Owner can't suspend/delete themselves nor other owners (server enforces too).
+    const canMutate = !isMe && !u.is_owner;
+    const suspendBtn = canMutate
+      ? (u.suspended_at
+          ? `<button class="btn btn-ghost" data-action="reactivate">Reativar</button>`
+          : `<button class="btn btn-ghost" data-action="suspend">Suspender</button>`)
+      : '';
+    const deleteBtn = canMutate
+      ? `<button class="btn btn-ghost btn-danger-ghost" data-action="delete">Excluir</button>`
+      : '';
+    const action = suspendBtn + deleteBtn;
 
     row.innerHTML = `
       <div class="admin-user-avatar">${avatarImg(u.email, 36, u.name)}</div>
@@ -410,9 +415,78 @@ function renderAdminUsers(users, filter = '') {
       </div>
       <div class="admin-user-actions">${action}</div>
     `;
-    const btn = row.querySelector('button[data-action]');
-    if (btn) btn.addEventListener('click', () => toggleSuspend(u, btn.dataset.action));
+    row.querySelectorAll('button[data-action]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.action === 'delete') openDeleteUserModal(u);
+        else                                  toggleSuspend(u, btn.dataset.action);
+      });
+    });
     wrap.appendChild(row);
+  }
+}
+
+// State for the in-flight deletion (the user being targeted by the modal)
+let _deleteUserTarget = null;
+
+function openDeleteUserModal(user) {
+  _deleteUserTarget = user;
+  $('#deleteUserSummary').innerHTML = `
+    <p>Você está prestes a excluir <strong>${escapeHtml(user.name || user.email)}</strong> (${escapeHtml(user.email)}).</p>
+    <p class="muted-small">Vai apagar:</p>
+    <ul class="muted-small">
+      <li>${user.boards_owned} quadro(s) próprio(s) (com listas, cards, convites)</li>
+      <li>${user.boards_member} acesso(s) como membro em quadros de outros</li>
+      <li>${user.cards} card(s) em quadros próprios</li>
+      <li>Workspace, sessões, atividade e tudo mais relacionado</li>
+    </ul>
+  `;
+  const input = $('#deleteUserConfirm');
+  const btn = $('#deleteUserConfirmBtn');
+  input.value = '';
+  btn.disabled = true;
+  $('#deleteUserModal').classList.remove('hidden');
+  setTimeout(() => input.focus(), 50);
+}
+
+function closeDeleteUserModal() {
+  $('#deleteUserModal').classList.add('hidden');
+  _deleteUserTarget = null;
+}
+
+async function confirmDeleteUser() {
+  const u = _deleteUserTarget;
+  if (!u) return;
+  const input = $('#deleteUserConfirm');
+  const btn = $('#deleteUserConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Excluindo...';
+  // The api.delete helper doesn't support a body, so use fetch directly here.
+  // The confirm_email in the body is what protects against accidental clicks.
+  try {
+    const res = await fetch(`/api/admin/users/${u.id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm_email: input.value.trim() }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert(err.error || 'Falha ao excluir usuário.');
+      btn.disabled = false;
+      btn.textContent = 'Excluir permanentemente';
+      return;
+    }
+    closeDeleteUserModal();
+    const fresh = await api.get('/api/admin/users');
+    const filter = $('#adminUsersSearch')?.value.trim().toLowerCase() || '';
+    renderAdminUsers(fresh, filter);
+    // Refresh the user-count in the section header
+    const widgetH3 = document.querySelector('#adminContent .dashboard-widget:nth-child(2) h3');
+    if (widgetH3) widgetH3.textContent = `Usuários (${fresh.length})`;
+  } catch {
+    alert('Falha ao excluir usuário (erro de rede). Tenta de novo.');
+    btn.disabled = false;
+    btn.textContent = 'Excluir permanentemente';
   }
 }
 
@@ -2876,6 +2950,20 @@ function setupEventListeners() {
   if (_appListenersDone) return;
   _appListenersDone = true;
   $('#newBoardBtn').addEventListener('click', openWizard);
+
+  // Admin: delete-user confirmation modal
+  $('#deleteUserCloseBtn')?.addEventListener('click', closeDeleteUserModal);
+  $('#deleteUserCancelBtn')?.addEventListener('click', closeDeleteUserModal);
+  $('#deleteUserConfirm')?.addEventListener('input', (e) => {
+    const expected = (_deleteUserTarget?.email || '').toLowerCase();
+    const typed    = e.target.value.trim().toLowerCase();
+    $('#deleteUserConfirmBtn').disabled = !expected || typed !== expected;
+  });
+  $('#deleteUserConfirmBtn')?.addEventListener('click', confirmDeleteUser);
+  // Click on backdrop closes
+  $('#deleteUserModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'deleteUserModal') closeDeleteUserModal();
+  });
 
   $$('.view-tab').forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
 
