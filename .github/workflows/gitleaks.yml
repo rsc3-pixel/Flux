@@ -1,0 +1,31 @@
+name: Gitleaks
+
+# Scans every push and pull request for accidentally committed secrets
+# (API keys, tokens, passwords). Uses .gitleaks.toml in the repo root for
+# rules + allowlist. Free for public repositories.
+#
+# To run locally: `gitleaks detect --config .gitleaks.toml`
+# (install: https://github.com/gitleaks/gitleaks#installing)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    name: Detect secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so gitleaks can scan past commits — catches a leak
+          # even if it was added in an earlier commit and "undone" in a later one
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml

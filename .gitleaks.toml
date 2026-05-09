@@ -1,0 +1,43 @@
+# Gitleaks config for Flux.
+# Runs in CI (.github/workflows/gitleaks.yml) on every push and PR. Can also
+# be run locally:  gitleaks detect --config .gitleaks.toml
+#
+# Extends the default rules with patterns specific to providers we use here.
+
+[extend]
+useDefault = true
+
+# ── Resend (used for the "Reportar bug" email feature) ──
+[[rules]]
+id          = "resend-api-key"
+description = "Resend API key (re_…)"
+regex       = '''re_[A-Za-z0-9_]{20,}'''
+keywords    = ["re_"]
+tags        = ["secret", "resend"]
+
+# ── DuckDNS token (used to update the dynamic IP record) ──
+# Note: the token is a UUID; restrict matches to lines mentioning duckdns.
+[[rules]]
+id          = "duckdns-token"
+description = "DuckDNS token (UUID seen near 'duckdns')"
+regex       = '''(?i)duckdns[^\n]{0,40}[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'''
+keywords    = ["duckdns"]
+tags        = ["secret", "duckdns"]
+
+# ── Allowlist (false positives we don't want flagged) ──
+[allowlist]
+description = "Files / paths intentionally excluded from secret scans"
+paths = [
+  '''node_modules/''',
+  '''public/vendor/''',          # Self-hosted libs (Sortable, etc) — vendor blobs
+  '''server/database\.sqlite.*''',
+  '''package-lock\.json''',
+  '''(^|/)\.gitleaks\.toml$''',  # The config file itself (it documents patterns)
+]
+# Sample/placeholder values used in docs — not real secrets
+regexes = [
+  '''re_xxxxx''',
+  '''re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx''',
+  '''re_chave_aqui''',
+  '''re_NOVA_CHAVE_AQUI''',
+]

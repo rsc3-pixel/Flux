@@ -12,18 +12,62 @@
 | `DATA_DIR` | sim em prod | repo dir | Onde mora o `database.sqlite`. **DEVE** ser `/var/lib/flux` em produção. |
 | `NODE_ENV` | sim em prod | — | `production` ativa cookie `Secure` (precisa de HTTPS). |
 | `PORT` | não | `3000` | Porta do Express. |
-| `ALLOW_REGISTRATION` | não | `true` | `false` esconde a aba "Criar conta" e bloqueia cadastros novos. |
+| `ALLOW_REGISTRATION` | não | `true` | `false` esconde a aba "Criar conta" e bloqueia cadastros novos (com exceção pra quem chega via link de convite com email na whitelist — v1.4.0+). |
 | `RESEND_API_KEY` | só pra bug report | — | Chave do Resend pra enviar emails de bug. |
 | `BUG_REPORT_TO` | não | `chongrenato@gmail.com` | Email pra onde os bugs são enviados. |
 
-Todas devem ser passadas ao iniciar o PM2 — exemplo completo:
+### Onde elas moram em produção
+
+Arquitetura de **single source of truth**:
+
+```
+/home/CHONGRENATOO/.flux.env                 (chmod 600, fora do repo)
+  └─ source canônica de TODAS as env vars do flux
+        ↓ (lido a cada pm2 reload do ecosystem)
+/home/CHONGRENATOO/flux-ecosystem.config.js  (fora do repo)
+  └─ executa loadEnvFile() e passa pro PM2 como env: {...}
+        ↓
+PM2 daemon → spawn flux com essas envs
+```
+
+**Conteúdo típico do `~/.flux.env`** (formato `KEY=value`, sem `export`, sem aspas):
+
+```env
+RESEND_API_KEY=re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DATA_DIR=/var/lib/flux
+NODE_ENV=production
+ALLOW_REGISTRATION=false
+```
+
+### Atualizar uma env var (workflow oficial)
 
 ```bash
-DATA_DIR=/var/lib/flux NODE_ENV=production PORT=3000 ALLOW_REGISTRATION=false \
-  RESEND_API_KEY='re_xxxxx' BUG_REPORT_TO='chongrenato@gmail.com' \
-  pm2 start server/server.js --name flux
-pm2 save
+nano ~/.flux.env                             # editar o que quiser
+pm2 reload ~/flux-ecosystem.config.js        # re-executa loadEnvFile()
+pm2 save                                     # snapshot pra resistir reboot
 ```
+
+> ⚠️ **Atenção**: `pm2 restart flux --update-env` **NÃO é suficiente** — esse comando só re-passa o env do shell atual, não re-executa o ecosystem.config.js. Use `pm2 reload <ecosystem>` pra realmente puxar o `.flux.env` novo.
+
+### Verificar qual env tá ativa de verdade no processo
+
+```bash
+# Direto do /proc do processo node — fonte da verdade absoluta
+NEW_PID=$(pm2 jlist | python3 -c "import sys,json; print([p['pid'] for p in json.load(sys.stdin) if p['name']=='flux'][0])")
+sudo cat /proc/$NEW_PID/environ | tr '\0' '\n' | grep -E '^(RESEND|DATA_DIR|ALLOW_REG|NODE_ENV)'
+```
+
+> Não use `pm2 env <id>` — ele mostra **cache**, pode estar desatualizado se você não recarregou o ecosystem.
+
+### Persistência através de reboot
+
+`~/.flux.env` + `~/flux-ecosystem.config.js` + `pm2 save` cobre tudo:
+- ✅ Reboot da VM
+- ✅ `sudo systemctl restart pm2-CHONGRENATOO`
+- ✅ `pm2 reload`/`pm2 restart flux`
+- ✅ Mudança de hardware do GCP
+
+**Não dependa de `~/.bashrc` / `~/.profile`** pra envs do flux — bashrc roda só em shell **interativo**, e o systemd lança o PM2 daemon como non-interactive. (Exceção: `DATA_DIR` continua no bashrc também porque é usado pelos scripts NPM que você roda manualmente — ver seção abaixo.)
 
 ---
 
@@ -144,29 +188,34 @@ npm run delete-user -- email@dominio.com --yes
 
 ## 🔐 Cadastros (abrir / fechar)
 
-### Abrir cadastros (qualquer pessoa pode criar conta)
+> Desde **v1.4.0** (convites com whitelist de emails), `false` é o padrão recomendado: pessoas convidadas via link continuam conseguindo criar conta normalmente, mas estranhos sem convite não conseguem.
+
+### Fechar cadastros (recomendado em produção)
 
 ```bash
-cd ~/Flux
-pm2 delete flux
-DATA_DIR=/var/lib/flux NODE_ENV=production PORT=3000 ALLOW_REGISTRATION=true pm2 start server/server.js --name flux
+sed -i 's/^ALLOW_REGISTRATION=.*/ALLOW_REGISTRATION=false/' ~/.flux.env
+pm2 reload ~/flux-ecosystem.config.js
 pm2 save
 ```
 
-### Fechar cadastros (só usuários existentes podem logar)
+### Abrir cadastros (qualquer pessoa pode criar conta — uso pra demos / testes)
 
 ```bash
-cd ~/Flux
-pm2 delete flux
-DATA_DIR=/var/lib/flux NODE_ENV=production PORT=3000 ALLOW_REGISTRATION=false pm2 start server/server.js --name flux
+sed -i 's/^ALLOW_REGISTRATION=.*/ALLOW_REGISTRATION=true/' ~/.flux.env
+pm2 reload ~/flux-ecosystem.config.js
 pm2 save
 ```
 
 ### Verificar qual modo está ativo
 
+Forma rápida (do **seu PC**, sem precisar SSH):
+
 ```bash
-pm2 env flux | grep ALLOW_REGISTRATION
+curl -s https://rsc3-flux.duckdns.org/api/config
+# {"registrationEnabled":true} ou {"registrationEnabled":false}
 ```
+
+Se quiser confirmar dentro da VM, use o método do `/proc` documentado na seção de env vars acima.
 
 Ou abre `https://rsc3-flux.duckdns.org` numa aba anônima — se aparece a aba "Criar conta", está aberto.
 
@@ -398,6 +447,50 @@ DATA_DIR=/var/lib/flux npm run create-user -- email@dominio.com "senha-correta" 
 
 ---
 
+## 🛡️ Proteção contra commit acidental de segredos
+
+Duas camadas (defesa em profundidade):
+
+### Camada 1 — GitHub Actions (`.github/workflows/gitleaks.yml`)
+
+Roda automaticamente em **todo push e PR pra main**. Escaneia o histórico inteiro com [gitleaks](https://github.com/gitleaks/gitleaks) usando os padrões de `.gitleaks.toml` (Resend, DuckDNS + defaults pra AWS/GitHub/Slack/etc).
+
+Se achar segredo → **falha o workflow** + comentário no PR. Não bloqueia o push em si (ele já passou nesse momento), mas você descobre rápido e dá pra rotacionar imediatamente.
+
+### Camada 2 — Pre-commit hook local (opcional)
+
+Bloqueia o commit ANTES dele acontecer. Bash puro, sem deps externas. Ativar uma vez:
+
+```bash
+bash scripts/install-hooks.sh
+```
+
+Daí em diante, todo `git commit` escaneia os arquivos staged. Se achar `re_xxxxx`, `ghp_xxxxx`, `sk-xxxxx`, etc, bloqueia com mensagem precisa (qual padrão + arquivo + linha).
+
+Pra burlar (NÃO recomendado, só em emergência): `git commit --no-verify`.
+
+### Testar se o hook funciona
+
+```bash
+echo 'RESEND_API_KEY="re_FAKE_TEST_chave_de_30_caracteres_aqui"' > /tmp/test.txt
+cp /tmp/test.txt ./test-leak.txt
+git add test-leak.txt
+git commit -m "test"   # deve bloquear
+rm test-leak.txt
+git restore --staged test-leak.txt 2>/dev/null || true
+```
+
+Você deve ver:
+
+```
+✗ Pre-commit: secret patterns found in staged files:
+
+  Pattern: re_[A-Za-z0-9_]{20,}
+    test-leak.txt:1:RESEND_API_KEY="re_FAKE_TEST_chave_de_30_caracteres_aqui"
+```
+
+---
+
 ## 🐛 Reportar bug — Resend (envio de email)
 
 O botão "Reportar bug" na sidebar abre um modal que envia email pra `chongrenato@gmail.com` via [Resend](https://resend.com). Free tier dá 100 emails/dia.
@@ -407,13 +500,11 @@ O botão "Reportar bug" na sidebar abre um modal que envia email pra `chongrenat
 1. Cria conta em https://resend.com (login com GitHub ou Google).
 2. Em **API Keys**, gera uma chave nova (escopo: "Sending access").
 3. Copia a chave (`re_...`).
-4. Na VM, edita o env do PM2 e reinicia:
+4. Na VM, atualiza a env via `.flux.env` (workflow oficial — ver seção de Env vars):
    ```bash
-   cd ~/Flux
-   pm2 delete flux
-   DATA_DIR=/var/lib/flux NODE_ENV=production PORT=3000 ALLOW_REGISTRATION=false \
-     RESEND_API_KEY='re_chave_aqui' BUG_REPORT_TO='chongrenato@gmail.com' \
-     pm2 start server/server.js --name flux
+   nano ~/.flux.env
+   # editar a linha RESEND_API_KEY=re_xxxxx
+   pm2 reload ~/flux-ecosystem.config.js
    pm2 save
    ```
 5. Testa clicando em "Reportar bug" no app.
@@ -427,17 +518,28 @@ O botão "Reportar bug" na sidebar abre um modal que envia email pra `chongrenat
 
 1. Gera nova key no painel Resend.
 2. Revoga a antiga lá mesmo.
-3. Repete o passo 4 do setup acima com a chave nova.
+3. Repete o passo 4 do setup acima com a chave nova (edita `~/.flux.env` + `pm2 reload`).
+
+> **Importante sobre vazamento**: Resend monitora ativamente chaves expostas em GitHub/Slack/Discord/chats e revoga automaticamente em minutos. Se você suspeita que vazou (commit acidental, paste em ferramenta com log), assume que já foi revogada — rotaciona imediatamente.
 
 ### Se o botão "Reportar bug" parar de funcionar
 
 ```bash
-pm2 logs flux --lines 50 --nostream | grep -i "bug\|resend"
-pm2 env flux | grep RESEND
+# Ver logs recentes do flux com filtro
+pm2 logs flux --lines 50 --nostream 2>&1 | grep -iE 'bug|resend|error'
+
+# Verificar env REAL do processo (mascarando a chave)
+NEW_PID=$(pm2 jlist | python3 -c "import sys,json; print([p['pid'] for p in json.load(sys.stdin) if p['name']=='flux'][0])")
+sudo cat /proc/$NEW_PID/environ | tr '\0' '\n' | grep RESEND_API_KEY | sed -E 's/(=re_).{4}.*/\1****(masked)/'
 ```
 
 Possíveis causas:
-- `RESEND_API_KEY` não setada → o endpoint retorna 503
+- `RESEND_API_KEY` não setada → o endpoint retorna **503** "Sistema de envio de bugs indisponível"
+  - Fix: editar `~/.flux.env` + `pm2 reload`
+- Chave inválida/revogada → log mostra `Resend API error 401 "API key is invalid"` → endpoint retorna **502**
+  - Fix: rotacionar a chave (passos da seção "Trocar a chave")
+- Email destino não é o da conta Resend → log mostra `403 "You can only send testing emails to your own email address"` → endpoint retorna **502**
+  - Fix: ajustar `BUG_REPORT_TO` no `~/.flux.env` ou verificar domínio próprio no Resend
 - Quota mensal estourada (3.000/mês) → resposta da Resend retorna 429
 - Email do destinatário fora do permitido (free tier limita) → resposta 403
 

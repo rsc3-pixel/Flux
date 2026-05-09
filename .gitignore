@@ -19,10 +19,21 @@ Thumbs.db
 .idea/
 *.swp
 
-# Env files (anything with secrets)
+# Env files (anything with secrets) — never commit ANY .env variant
 .env
-.env.local
-.env.*.local
+.env.*
+*.env
+.flux.env
+# PM2 ecosystem files frequently contain hardcoded env vars (RESEND_API_KEY etc)
+# Keep them OUT of the repo; they live on the VM in /home/CHONGRENATOO/
+ecosystem.config.js
+*-ecosystem.config.js
+
+# Other secrets
+secrets/
+*.pem
+*.key
+id_rsa*
 
 # Claude scratch
 .claude/

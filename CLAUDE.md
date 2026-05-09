@@ -126,7 +126,7 @@ Antes mostrava todo o histórico e não marcava como visto se fechado pelo X. Ag
 - `manifest.json` + meta tags iOS + service worker básico
 - Dockerfile com better-sqlite3 nativo (mantido como opção, mas deploy atual NÃO usa Docker)
 - `DATA_DIR` env var (db.js usa pra encontrar SQLite fora do repo — `/var/lib/flux` na VM)
-- `ALLOW_REGISTRATION` env var (default on; quando off, esconde aba Criar Conta + retorna 403)
+- `ALLOW_REGISTRATION` env var (default on; quando off, esconde aba Criar Conta + retorna 403). **Exceção desde v1.4.0**: se a request vier com `inviteToken` e o email digitado bater com a whitelist do convite, o registro passa mesmo com `false`.
 - Endpoint público `/api/config` retorna `{ registrationEnabled }`
 
 ---
@@ -155,9 +155,10 @@ Repo público: https://github.com/rsc3-pixel/Flux
 | Process manager | PM2 + systemd (`pm2-CHONGRENATOO.service`) |
 | Banco | SQLite em `/var/lib/flux/database.sqlite` (fora do repo) |
 | Repo na VM | `/home/CHONGRENATOO/Flux/` |
+| Env vars do flux | `~/.flux.env` (chmod 600, fora do repo) lido por `~/flux-ecosystem.config.js` que passa pro PM2. **Editar com `nano ~/.flux.env` + `pm2 reload ~/flux-ecosystem.config.js`** (não `pm2 restart --update-env`, esse não re-lê o arquivo). |
 | Backup automático | Cron diário 03:00 UTC → `gs://flux-backups-rsc3` (30 dias retention) |
 | Firewall (GCP) | `allow-http-https` (TCP:80,443), `allow-ssh-iap` (TCP:22 from IAP). Porta 3000 não está mais exposta. |
-| Cadastros públicos | **Trancados** (`ALLOW_REGISTRATION=false`) — onboarding via `npm run create-user` |
+| Cadastros públicos | **Trancados** (`ALLOW_REGISTRATION=false`). Onboarding: `npm run create-user` na VM **OU** convite com whitelist (v1.4.0+) — qualquer membro existente pode convidar via link, e o convidado consegue se registrar mesmo com cadastros fechados se o email bater com a whitelist. |
 | Custo | **R$ 0,00/mês** (free tier permanente) |
 
 ### Coabitação na VM
@@ -166,11 +167,15 @@ A mesma VM hospeda também o **trabalho de faculdade do user** em `https://rsc3-
 
 ### Pegadinhas conhecidas que custaram tempo
 
-1. **`DATA_DIR` nos scripts npm**: `create-user`/`delete-user`/`list-users` caem num fallback (`server/database.sqlite` dentro do repo) se a env var `DATA_DIR=/var/lib/flux` não estiver setada. Resultado: usuário criado num "banco fantasma" que o app de produção não vê. **Fix permanente**: a env está exportada em `~/.bashrc` e `~/.profile` do usuário `CHONGRENATOO`. Toda sessão SSH nova já carrega.
+1. **`DATA_DIR` nos scripts npm**: `create-user`/`delete-user`/`list-users` caem num fallback (`server/database.sqlite` dentro do repo) se a env var `DATA_DIR=/var/lib/flux` não estiver setada. Resultado: usuário criado num "banco fantasma" que o app de produção não vê. **Fix permanente**: a env está exportada em `~/.bashrc` e `~/.profile` do usuário `CHONGRENATOO`. Toda sessão SSH nova já carrega. **Nota:** o processo flux **não depende disso** — pega `DATA_DIR` do `~/.flux.env` via ecosystem.config.js (ver "Env vars do flux" na tabela acima). O bashrc é apenas pros scripts npm que você roda manualmente.
 2. **`scripts/delete-user.js` antigo falhava** porque confiava em `ON DELETE CASCADE` que não existia em `invites.created_by` nem em `boards.owner_id` (esse último foi adicionado via `ALTER TABLE`). Corrigido em 2026-04-26 — o script agora limpa essas tabelas antes de deletar o user, dentro de uma transação.
 3. **`NODE_ENV=production` quebra login em HTTP**: ativa flag `Secure` no cookie de sessão, que o navegador descarta sem HTTPS. **Não rodar prod em HTTP**.
 4. **GCP Browser SSH é frágil**: precisou habilitar Cloud IAP API + criar regra de firewall pra `35.235.240.0/20:22`, mas mesmo assim ficou instável. Use `gcloud compute ssh flux --zone=us-west1-a` do PowerShell local.
 5. **IP externo efêmero muda quando a VM reinicia**: aconteceu em 2026-04-26 — VM rebootou (causa não investigada), ganhou IP `136.109.172.191` em vez de `34.168.140.230`, DuckDNS continuou apontando pro IP velho e tudo ficou fora do ar. Fix: o IP atual foi promovido a estático (`flux-static-ip` em us-west1). IP estático **associado a VM em execução é gratuito** no GCP — só cobra se ficar reservado sem uso.
+6. **`pm2 restart flux --update-env` NÃO recarrega o `.flux.env`** — só re-passa as envs que o shell atual tem. Pra realmente puxar valores novos do `~/.flux.env`, usa `pm2 reload ~/flux-ecosystem.config.js` (que re-executa o `loadEnvFile()` do ecosystem). Custou ~1h descobrindo isso em 2026-05-09 quando o bug report quebrou e a chave Resend nova "não pegava" mesmo após restart.
+7. **`pm2 env <id>` mostra cache, não o env real** — pra ver o que está REALMENTE no processo, usa `sudo cat /proc/<PID>/environ | tr '\0' '\n'`. Cache do PM2 reflete o snapshot do último `pm2 save` ou do start, não mudanças posteriores. Mesma sessão de debug do item 6.
+8. **Resend sandbox (`onboarding@resend.dev`) só envia pra um destinatário verificado** — o email da conta Resend (`chongrenato@gmail.com`). Se mudar `BUG_REPORT_TO` pra outro email sem ter domínio próprio verificado no Resend, retorna 403. Pra enviar pra qualquer destinatário precisa registrar domínio próprio (~R$50/ano) e verificar SPF/DKIM no painel Resend. DuckDNS **não funciona** (DNS compartilhado, não dá pra adicionar TXT na raiz).
+9. **Resend revoga chaves expostas automaticamente** em poucos minutos quando detecta a chave em chats/repos públicos/Slack/Discord. Aconteceu 2x em 2026-05-09 quando chaves vazaram (chat e logs do gcloud SSH). Sempre tratar uma chave colada em qualquer ferramenta com log como já comprometida.
 
 ### Pendências antigas (lembretes)
 
