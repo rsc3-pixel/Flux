@@ -198,6 +198,14 @@ app.get('/api/auth/me', (req, res) => {
   res.json(req.user);
 });
 
+// =================================================================
+// ADMIN (owner only) — see auth.requireOwner. All admin routes return 404
+// when the caller isn't an owner, so the surface area stays invisible.
+// =================================================================
+app.get('/api/admin/ping', auth.requireOwner, (req, res) => {
+  res.json({ ok: true, owner: { id: req.user.id, email: req.user.email } });
+});
+
 // Public: invite preview (so unauthenticated users can see what they're invited to)
 app.get('/api/invites/:token', (req, res) => {
   const inv = db.prepare(`

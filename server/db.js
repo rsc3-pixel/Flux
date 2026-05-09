@@ -161,6 +161,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
 `);
 
+// ---- OWNER FLAG (Iteration 7) ----
+// Single is_owner=1 user has access to /admin (manage users, feature flags,
+// platform stats). Bootstrap: the user with email matching OWNER_EMAIL env
+// (default chongrenato@gmail.com) is automatically promoted on every boot —
+// idempotent UPDATE, so demoting an owner needs to be a manual SQL change
+// AFTER renaming OWNER_EMAIL to something else.
+const userColsForOwner = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+if (!userColsForOwner.includes('is_owner')) {
+  db.exec('ALTER TABLE users ADD COLUMN is_owner INTEGER NOT NULL DEFAULT 0');
+}
+const OWNER_EMAIL = (process.env.OWNER_EMAIL || 'chongrenato@gmail.com').toLowerCase();
+db.prepare('UPDATE users SET is_owner = 1 WHERE LOWER(email) = ?').run(OWNER_EMAIL);
+
 // ---- INVITE EXTRA BOARDS (Iteration 6.1) ----
 // One invite can cover multiple boards. invites.board_id keeps the "primary"
 // board (for back-compat with the legacy single-board flow); any additional

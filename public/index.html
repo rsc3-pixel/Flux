@@ -91,6 +91,8 @@
         <nav class="ws-nav">
           <button class="ws-nav-item" data-view="activity"  data-icon="bell"        data-anim="wiggle">Atividade</button>
           <button class="ws-nav-item" data-view="analytics" data-icon="bar-chart-3" data-anim="bounce">Analytics</button>
+          <!-- Admin tab — JS reveals only when state.user.is_owner is true -->
+          <button class="ws-nav-item hidden" id="adminNavBtn" data-view="admin" data-icon="shield" data-anim="pop">Admin</button>
           <button class="ws-nav-item" id="reportBugBtn"     data-icon="bug"         data-anim="shake">Reportar bug</button>
         </nav>
         <div class="sidebar-version" id="sidebarVersion"></div>
@@ -306,6 +308,14 @@
           <div id="wsActivityTrend" class="chart-container"></div>
         </div>
       </div>
+    </section>
+
+    <!-- ADMIN (owner only — JS hides the nav button + protects the route via /api/admin/*) -->
+    <section id="adminView" class="board-view hidden">
+      <div class="board-header">
+        <h2>Painel Admin</h2>
+      </div>
+      <div id="adminContent" class="admin-content"></div>
     </section>
 
     <!-- SETTINGS -->

@@ -57,7 +57,7 @@ function loadUser(req, res, next) {
         AND (expires_at IS NULL OR expires_at > datetime('now'))
     `).get(token);
     if (session) {
-      req.user = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(session.user_id);
+      req.user = db.prepare('SELECT id, email, name, is_owner FROM users WHERE id = ?').get(session.user_id);
     } else {
       // Token invalid or expired: clear the cookie + delete any stale row
       db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
@@ -69,6 +69,13 @@ function loadUser(req, res, next) {
 
 function requireAuth(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Não autenticado' });
+  next();
+}
+
+// Restrict to owner accounts only. Returns 404 (not 403) so non-owners can't
+// even confirm the route exists — keeps the admin surface area invisible.
+function requireOwner(req, res, next) {
+  if (!req.user || !req.user.is_owner) return res.status(404).json({ error: 'Não encontrado' });
   next();
 }
 
@@ -154,7 +161,7 @@ function requireBoardAccess(getBoardId, level = 'view') {
 module.exports = {
   hashPassword, verifyPassword, dummyVerify,
   createSession, destroySession,
-  loadUser, requireAuth,
+  loadUser, requireAuth, requireOwner,
   getBoardRole, canView, canEdit, canManage, canDeleteBoard,
   boardIdFromList, boardIdFromCard, workspaceIdFromBoard, defaultWorkspaceForUser,
   logActivity,

@@ -293,6 +293,32 @@ function renderUserMenu() {
   $('#userMenuName').textContent = state.user.name.split(/\s+/)[0];
   $('#userMenuFullName').textContent = state.user.name;
   $('#userMenuEmail').textContent = state.user.email;
+  // Reveal the "Admin" sidebar button only for owners. Defense-in-depth:
+  // the server also blocks /api/admin/* with 404 for non-owners, so hiding
+  // the button is purely UX — not a security boundary.
+  const adminBtn = $('#adminNavBtn');
+  if (adminBtn) adminBtn.classList.toggle('hidden', !state.user.is_owner);
+}
+
+// Owner-only "Painel Admin" view. PR1: just a placeholder that confirms the
+// route is reachable. Subsequent PRs will fill in feature flags, user
+// management, etc.
+async function renderAdmin() {
+  const root = $('#adminContent');
+  if (!root) return;
+  root.innerHTML = '<p class="muted-small">Carregando...</p>';
+  try {
+    const ping = await api.get('/api/admin/ping');
+    root.innerHTML = `
+      <div class="dashboard-widget">
+        <h3>Painel ativo</h3>
+        <p>Logado como <strong>${escapeHtml(ping.owner.email)}</strong> (id ${parseInt(ping.owner.id) || 0}).</p>
+        <p class="muted-small">Próximas iterações: feature flags, gestão de usuários, modo preview.</p>
+      </div>
+    `;
+  } catch {
+    root.innerHTML = '<p class="muted-small" style="color: var(--color-danger);">Sem acesso ao painel admin.</p>';
+  }
 }
 
 // ============ AUTH FORMS ============
@@ -446,7 +472,7 @@ function applyRoleVisibility() {
 }
 
 // Workspace-level views don't operate on a board
-const WORKSPACE_VIEWS = new Set(['settings', 'activity', 'analytics']);
+const WORKSPACE_VIEWS = new Set(['settings', 'activity', 'analytics', 'admin']);
 
 function switchView(viewName) {
   // Remember the last per-board view, so workspace-level views (Settings,
@@ -462,6 +488,7 @@ function switchView(viewName) {
     kanban: '#kanbanView', table: '#tableView', cards: '#cardsView',
     calendar: '#calendarView', gantt: '#ganttView', dashboard: '#dashboardView',
     settings: '#settingsView', activity: '#activityView', analytics: '#analyticsView',
+    admin: '#adminView',
   };
   $(map[viewName])?.classList.remove('hidden');
   // Hide per-board view tabs when in a workspace-level view
@@ -475,6 +502,7 @@ function renderCurrentView() {
   if (state.view === 'settings')  return renderSettings();
   if (state.view === 'activity')  return renderActivity();
   if (state.view === 'analytics') return renderWorkspaceAnalytics();
+  if (state.view === 'admin')     return renderAdmin();
   if (!state.currentBoard) return;
   if (state.view === 'kanban')    renderKanban();
   if (state.view === 'table')     renderTable();

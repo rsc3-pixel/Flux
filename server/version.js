@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.5.0',
+    date: '2026-05-09',
+    notes: [
+      '🛡️ Painel Admin (apenas pro dono do app) — base pra próximas funcionalidades de gestão',
+    ],
+  },
+  {
     version: '1.4.3',
     date: '2026-05-09',
     notes: [
