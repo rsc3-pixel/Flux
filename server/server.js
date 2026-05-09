@@ -198,12 +198,63 @@ app.get('/api/auth/me', (req, res) => {
   res.json(req.user);
 });
 
+// Public flag map — frontend reads this on boot to know which features to
+// render. Returns the bare minimum (key/enabled/message) — admin-only audit
+// fields (updated_at, updated_by) are NOT exposed here.
+app.get('/api/flags', (_req, res) => {
+  const rows = db.prepare('SELECT key, enabled, message FROM feature_flags').all();
+  const out = {};
+  for (const f of rows) out[f.key] = { enabled: !!f.enabled, message: f.message || '' };
+  res.json(out);
+});
+
 // =================================================================
 // ADMIN (owner only) — see auth.requireOwner. All admin routes return 404
 // when the caller isn't an owner, so the surface area stays invisible.
 // =================================================================
 app.get('/api/admin/ping', auth.requireOwner, (req, res) => {
   res.json({ ok: true, owner: { id: req.user.id, email: req.user.email } });
+});
+
+// Full flag list with audit info (when changed, by whom). Same data as the
+// public /api/flags but enriched.
+app.get('/api/admin/flags', auth.requireOwner, (req, res) => {
+  const rows = db.prepare(`
+    SELECT f.key, f.enabled, f.message, f.updated_at, u.name AS updated_by_name
+    FROM feature_flags f
+    LEFT JOIN users u ON u.id = f.updated_by
+    ORDER BY f.key
+  `).all();
+  res.json(rows.map(f => ({
+    key: f.key,
+    enabled: !!f.enabled,
+    message: f.message || '',
+    updated_at: f.updated_at,
+    updated_by_name: f.updated_by_name,
+  })));
+});
+
+// Toggle a flag's enabled state and/or its maintenance message. Body fields
+// are optional — pass only what you want to change.
+app.patch('/api/admin/flags/:key', auth.requireOwner, (req, res) => {
+  const key = String(req.params.key || '').slice(0, 64);
+  const existing = db.prepare('SELECT * FROM feature_flags WHERE key = ?').get(key);
+  if (!existing) return res.status(404).json({ error: 'Flag não encontrada' });
+
+  const enabled = req.body?.enabled === undefined
+    ? existing.enabled
+    : (req.body.enabled ? 1 : 0);
+  const message = typeof req.body?.message === 'string'
+    ? req.body.message.slice(0, 500)
+    : existing.message;
+
+  db.prepare(`
+    UPDATE feature_flags
+    SET enabled = ?, message = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+    WHERE key = ?
+  `).run(enabled, message, req.user.id, key);
+
+  res.json({ key, enabled: !!enabled, message });
 });
 
 // Public: invite preview (so unauthenticated users can see what they're invited to)

@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.5.1',
+    date: '2026-05-09',
+    notes: [
+      '🎛️ Painel Admin agora tem feature flags — controle pra ligar/desligar módulos sem precisar de deploy',
+    ],
+  },
+  {
     version: '1.5.0',
     date: '2026-05-09',
     notes: [

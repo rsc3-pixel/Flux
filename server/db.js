@@ -161,6 +161,29 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
 `);
 
+// ---- FEATURE FLAGS (Iteration 7.1) ----
+// Toggleable modules. Owners flip values from the admin panel; the frontend
+// fetches them on boot via /api/flags and hides UI accordingly. Backend
+// routes that protect a feature should also check the flag before serving.
+//
+// 'message' is shown in the disabled feature's place (e.g. "Reportar bug está
+// em manutenção"). Empty string = silent disable (just hide).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS feature_flags (
+    key        TEXT PRIMARY KEY,
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    message    TEXT NOT NULL DEFAULT '',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+  );
+`);
+// Seed initial flags. INSERT OR IGNORE preserves owner-edited values across
+// reboots — only adds rows for flags that don't exist yet.
+const seedFlag = db.prepare('INSERT OR IGNORE INTO feature_flags (key, enabled) VALUES (?, ?)');
+seedFlag.run('report_bug', 1);  // Default ON: bug-report button in sidebar
+seedFlag.run('invites', 1);     // Default ON: invite system (Members modal)
+seedFlag.run('financial', 0);   // Default OFF: future financial module (PR pending)
+
 // ---- OWNER FLAG (Iteration 7) ----
 // Single is_owner=1 user has access to /admin (manage users, feature flags,
 // platform stats). Bootstrap: the user with email matching OWNER_EMAIL env

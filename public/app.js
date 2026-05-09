@@ -12,6 +12,7 @@ const state = {
   user: null,                         // { id, email, name } when logged in
   workspace: null,                    // { id, name, plan, board_count }
   pendingInviteToken: null,           // captured from ?invite=... in URL
+  flags: {},                          // { key: {enabled, message} } from /api/flags
   boards: [],
   currentBoardId: null,
   currentBoard: null,                 // also includes .role for current user
@@ -162,6 +163,22 @@ const api = {
   delete: async (url)       => request(url, { method: 'DELETE' }),
 };
 
+// Feature flag helpers. flagEnabled() defaults to true if a flag isn't loaded
+// yet (or fails to load) — fail-OPEN is intentional: a network blip shouldn't
+// hide working features for the user. To force-disable, the owner has to
+// actively set enabled=false in the admin panel.
+function flagEnabled(key) {
+  const f = state.flags?.[key];
+  return f === undefined || f.enabled !== false;
+}
+function flagMessage(key) {
+  return state.flags?.[key]?.message || '';
+}
+async function loadFlags() {
+  try { state.flags = await api.get('/api/flags'); }
+  catch { state.flags = {}; /* fail-open: features stay visible */ }
+}
+
 // ============ AUTH BOOT ============
 async function bootAuth() {
   // Each step is wrapped so a single failure can't strand the user on a blank
@@ -214,6 +231,10 @@ function showBootError() {
 
 async function afterLogin() {
   showAppShell();
+  // Load feature flags before first render so the UI knows which features
+  // to hide. Doesn't block the user — fail-open if it errors.
+  await loadFlags();
+  applyFeatureFlags();
   renderUserMenu();
 
   // If we arrived with an invite token, accept it before showing the app
@@ -286,6 +307,15 @@ function showAppShell() {
   $('#appShell').classList.remove('hidden');
 }
 
+// Apply feature flags to the UI. Called once after loadFlags() during boot,
+// and again whenever the owner toggles a flag from the admin panel.
+function applyFeatureFlags() {
+  // 'report_bug' OFF → hide the "Reportar bug" button in the sidebar
+  const bugBtn = document.getElementById('reportBugBtn');
+  if (bugBtn) bugBtn.classList.toggle('hidden', !flagEnabled('report_bug'));
+  // Future flags get wired here as features are added (financial, etc.)
+}
+
 function renderUserMenu() {
   if (!state.user) return;
   const seed = state.user.email || state.user.name;
@@ -300,24 +330,80 @@ function renderUserMenu() {
   if (adminBtn) adminBtn.classList.toggle('hidden', !state.user.is_owner);
 }
 
-// Owner-only "Painel Admin" view. PR1: just a placeholder that confirms the
-// route is reachable. Subsequent PRs will fill in feature flags, user
-// management, etc.
+// Friendly labels for known flags. Unknown flags fall back to the raw key —
+// so adding a new flag in the DB Just Works even before this map updates.
+const FLAG_META = {
+  report_bug: { label: 'Reportar bug',        desc: 'Botão "Reportar bug" na sidebar (envia email via Resend)' },
+  invites:    { label: 'Convites de membros', desc: 'Permite gerar links de convite no modal Membros do quadro' },
+  financial:  { label: 'Módulo financeiro',   desc: 'View "Finanças" para acompanhar contas e transações (em construção)' },
+};
+
 async function renderAdmin() {
   const root = $('#adminContent');
   if (!root) return;
   root.innerHTML = '<p class="muted-small">Carregando...</p>';
   try {
-    const ping = await api.get('/api/admin/ping');
-    root.innerHTML = `
-      <div class="dashboard-widget">
-        <h3>Painel ativo</h3>
-        <p>Logado como <strong>${escapeHtml(ping.owner.email)}</strong> (id ${parseInt(ping.owner.id) || 0}).</p>
-        <p class="muted-small">Próximas iterações: feature flags, gestão de usuários, modo preview.</p>
-      </div>
+    const flags = await api.get('/api/admin/flags');
+    root.innerHTML = '';
+    const widget = document.createElement('div');
+    widget.className = 'dashboard-widget';
+    widget.innerHTML = `
+      <h3>Feature flags</h3>
+      <p class="muted-small">Liga/desliga módulos sem precisar de deploy. A mensagem opcional aparece no lugar da feature pros usuários quando ela está desligada.</p>
+      <div class="admin-flags-list" id="adminFlagsList"></div>
     `;
+    root.appendChild(widget);
+    renderAdminFlags(flags);
   } catch {
     root.innerHTML = '<p class="muted-small" style="color: var(--color-danger);">Sem acesso ao painel admin.</p>';
+  }
+}
+
+function renderAdminFlags(flags) {
+  const list = $('#adminFlagsList');
+  if (!list) return;
+  list.innerHTML = '';
+  for (const f of flags) {
+    const meta = FLAG_META[f.key] || { label: f.key, desc: '' };
+    const row = document.createElement('div');
+    row.className = 'admin-flag-row';
+    const updatedLine = f.updated_at
+      ? `<p class="admin-flag-meta">Última edição: ${formatRelativeTime(f.updated_at)}${f.updated_by_name ? ` por ${escapeHtml(f.updated_by_name)}` : ''}</p>`
+      : '';
+    row.innerHTML = `
+      <div class="admin-flag-header">
+        <strong>${escapeHtml(meta.label)}</strong>
+        <code class="admin-flag-key">${escapeHtml(f.key)}</code>
+        <label class="admin-flag-toggle">
+          <input type="checkbox" ${f.enabled ? 'checked' : ''} />
+          <span>${f.enabled ? 'Ativo' : 'Desligado'}</span>
+        </label>
+      </div>
+      ${meta.desc ? `<p class="muted-small">${escapeHtml(meta.desc)}</p>` : ''}
+      <textarea class="admin-flag-message" placeholder="Mensagem de manutenção (opcional, máx 500 chars)" maxlength="500">${escapeHtml(f.message || '')}</textarea>
+      ${updatedLine}
+    `;
+    const cb = row.querySelector('input[type="checkbox"]');
+    cb.addEventListener('change', () => saveFlag(f.key, { enabled: cb.checked }));
+    const ta = row.querySelector('textarea');
+    ta.addEventListener('blur', () => {
+      if (ta.value !== (f.message || '')) saveFlag(f.key, { message: ta.value });
+    });
+    list.appendChild(row);
+  }
+}
+
+async function saveFlag(key, patch) {
+  try {
+    await api.patch(`/api/admin/flags/${encodeURIComponent(key)}`, patch);
+    // Reload flags + reapply UI side-effects so toggles take effect immediately.
+    await loadFlags();
+    applyFeatureFlags();
+    // Refresh the admin list so updated_at / label state reflect the change.
+    const fresh = await api.get('/api/admin/flags');
+    renderAdminFlags(fresh);
+  } catch {
+    alert(`Falha ao salvar flag "${key}". Tenta de novo.`);
   }
 }
 
@@ -2039,11 +2125,14 @@ async function openMembersModal() {
   renderInviteChips();
 
   const canManage = state.currentBoard.role === 'owner' || state.currentBoard.role === 'admin';
-  $('#inviteSection').classList.toggle('hidden', !canManage);
-  $('#pendingInvitesSection').classList.toggle('hidden', !canManage);
+  // Hide invite UI when (a) user can't manage OR (b) the 'invites' feature
+  // flag is off (owner-controlled kill switch).
+  const invitesAllowed = canManage && flagEnabled('invites');
+  $('#inviteSection').classList.toggle('hidden', !invitesAllowed);
+  $('#pendingInvitesSection').classList.toggle('hidden', !invitesAllowed);
 
   await renderMembersList();
-  if (canManage) {
+  if (invitesAllowed) {
     renderExtraBoardsList();
     await renderPendingInvites();
   }
