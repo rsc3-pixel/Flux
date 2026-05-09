@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.5.4',
+    date: '2026-05-09',
+    notes: [
+      '👁️ Painel Admin agora tem "Modo preview" — o owner consegue ver o app exatamente como um usuário comum vê (sem botão Admin, com feature flags aplicadas)',
+    ],
+  },
+  {
     version: '1.5.3',
     date: '2026-05-09',
     notes: [

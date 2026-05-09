@@ -1474,6 +1474,43 @@ body {
 }
 #deleteUserConfirm:focus { outline: none; border-color: var(--color-danger); }
 
+/* Preview-mode banner: always visible at the top while an owner is impersonating
+   the regular-user experience. Acts as the only escape hatch since the Admin
+   sidebar button is hidden in this mode. */
+.preview-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: #fde68a;
+  color: #78350f;
+  font-size: 13px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  border-bottom: 1px solid #f59e0b;
+  flex-wrap: wrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.preview-banner button {
+  background: #78350f;
+  color: #fde68a;
+  border: none;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.preview-banner button:hover { background: #5a2a08; }
+/* When the banner is showing, push the rest of the app down so it doesn't get
+   covered. The banner is fixed-positioned (so it stays through scroll), so we
+   need explicit padding on body — applied via a class on body when active. */
+body.preview-on { padding-top: 42px; }
+
 .chart-container {
   flex: 1;
   display: flex;

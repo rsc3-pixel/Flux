@@ -235,6 +235,7 @@ async function afterLogin() {
   // to hide. Doesn't block the user — fail-open if it errors.
   await loadFlags();
   applyFeatureFlags();
+  applyPreviewBanner();
   renderUserMenu();
 
   // If we arrived with an invite token, accept it before showing the app
@@ -307,6 +308,45 @@ function showAppShell() {
   $('#appShell').classList.remove('hidden');
 }
 
+// Preview mode: when an owner clicks "Entrar em modo preview" in the admin
+// panel, we set this localStorage flag and treat them as a regular user (the
+// "Admin" sidebar button hides, feature flags apply normally). To exit, the
+// user clicks the persistent yellow banner at the top — see #previewBanner.
+const PREVIEW_KEY = 'mt_preview_mode';
+function isPreviewMode() { return localStorage.getItem(PREVIEW_KEY) === 'true'; }
+function setPreviewMode(on) {
+  if (on) localStorage.setItem(PREVIEW_KEY, 'true');
+  else    localStorage.removeItem(PREVIEW_KEY);
+}
+// "Effective" owner = real owner AND not in preview. Use this everywhere a
+// UI surface should hide for non-owners.
+function isOwnerEffective() {
+  return !!state.user?.is_owner && !isPreviewMode();
+}
+
+// Show/hide the persistent yellow banner that lets the owner exit preview.
+// Only renders when the user IS a real owner AND preview is on — defensive
+// against a non-owner ending up with the localStorage flag set somehow.
+function applyPreviewBanner() {
+  const banner = document.getElementById('previewBanner');
+  if (!banner) return;
+  const visible = !!state.user?.is_owner && isPreviewMode();
+  banner.classList.toggle('hidden', !visible);
+  // body padding-top so the fixed banner doesn't cover the topbar
+  document.body.classList.toggle('preview-on', visible);
+}
+
+// Activate preview mode and reload so all visibility decisions re-run from a
+// clean slate (renderUserMenu, applyFeatureFlags, etc).
+function enterPreview() {
+  setPreviewMode(true);
+  location.reload();
+}
+function exitPreview() {
+  setPreviewMode(false);
+  location.reload();
+}
+
 // Apply feature flags to the UI. Called once after loadFlags() during boot,
 // and again whenever the owner toggles a flag from the admin panel.
 function applyFeatureFlags() {
@@ -323,11 +363,12 @@ function renderUserMenu() {
   $('#userMenuName').textContent = state.user.name.split(/\s+/)[0];
   $('#userMenuFullName').textContent = state.user.name;
   $('#userMenuEmail').textContent = state.user.email;
-  // Reveal the "Admin" sidebar button only for owners. Defense-in-depth:
-  // the server also blocks /api/admin/* with 404 for non-owners, so hiding
-  // the button is purely UX — not a security boundary.
+  // Reveal the "Admin" sidebar button only for OWNERS WHO AREN'T IN PREVIEW
+  // MODE. Defense-in-depth: server still blocks /api/admin/* with 404 for
+  // non-owners. In preview mode, the real owner stops seeing this button so
+  // the experience matches a regular user's.
   const adminBtn = $('#adminNavBtn');
-  if (adminBtn) adminBtn.classList.toggle('hidden', !state.user.is_owner);
+  if (adminBtn) adminBtn.classList.toggle('hidden', !isOwnerEffective());
 }
 
 // Friendly labels for known flags. Unknown flags fall back to the raw key —
@@ -349,6 +390,11 @@ async function renderAdmin() {
     ]);
     root.innerHTML = `
       <div class="dashboard-widget">
+        <h3>Modo preview</h3>
+        <p class="muted-small">Veja o app exatamente como um usuário comum vê — sem o botão Admin, com as feature flags aplicadas. Útil pra validar mudanças antes de liberar pra outros. Você sai pelo banner amarelo no topo.</p>
+        <button type="button" class="btn btn-primary" id="adminEnterPreviewBtn">Entrar em modo preview</button>
+      </div>
+      <div class="dashboard-widget">
         <h3>Feature flags</h3>
         <p class="muted-small">Liga/desliga módulos sem precisar de deploy. A mensagem opcional aparece no lugar da feature pros usuários quando ela está desligada.</p>
         <div class="admin-flags-list" id="adminFlagsList"></div>
@@ -365,6 +411,7 @@ async function renderAdmin() {
     $('#adminUsersSearch').addEventListener('input', (e) => {
       renderAdminUsers(users, e.target.value.trim().toLowerCase());
     });
+    $('#adminEnterPreviewBtn').addEventListener('click', enterPreview);
   } catch {
     root.innerHTML = '<p class="muted-small" style="color: var(--color-danger);">Sem acesso ao painel admin.</p>';
   }
@@ -2950,6 +2997,9 @@ function setupEventListeners() {
   if (_appListenersDone) return;
   _appListenersDone = true;
   $('#newBoardBtn').addEventListener('click', openWizard);
+
+  // Admin: preview-mode exit button (in the persistent yellow banner)
+  $('#previewExitBtn')?.addEventListener('click', exitPreview);
 
   // Admin: delete-user confirmation modal
   $('#deleteUserCloseBtn')?.addEventListener('click', closeDeleteUserModal);

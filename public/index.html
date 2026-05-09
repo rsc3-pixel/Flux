@@ -73,6 +73,12 @@
   <!-- APP -->
   <div id="appShell" class="hidden app-layout">
 
+    <!-- Preview-mode banner (only visible when an owner activated it from the admin panel) -->
+    <div id="previewBanner" class="preview-banner hidden">
+      <span>🔧 <strong>Modo Preview ativo</strong> — você está vendo o app como um usuário comum.</span>
+      <button type="button" id="previewExitBtn">Sair do preview</button>
+    </div>
+
     <!-- SIDEBAR (desktop fixed, mobile drawer) -->
     <aside class="sidebar" id="sidebar">
       <button class="sidebar-brand" id="brandHome" type="button" aria-label="Voltar para o quadro">
