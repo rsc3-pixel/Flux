@@ -1430,6 +1430,60 @@ app.patch('/api/finance/transactions/:id', requireFinancialFlag, (req, res) => {
   res.json({ id, category_id: categoryId, type, amount_cents: amount, description, transaction_date: date });
 });
 
+// ---- DASHBOARD ----
+// Aggregated summary for one month: totals (current + previous for the delta)
+// + top 5 expense categories. Cheap enough to compute on demand — SQLite
+// indexes by (user_id, transaction_date DESC) make these queries instant.
+app.get('/api/finance/summary', requireFinancialFlag, (req, res) => {
+  const ym = String(req.query.month || '').match(/^(\d{4})-(\d{2})$/);
+  if (!ym) return res.status(400).json({ error: 'Mês inválido (use YYYY-MM)' });
+  const [, y, m] = ym;
+  const monthY = parseInt(y), monthM = parseInt(m);
+  // Range helpers — last day computed via Date(year, month, 0).getDate()
+  const fromCur = `${y}-${m}-01`;
+  const toCur   = `${y}-${m}-${String(new Date(monthY, monthM, 0).getDate()).padStart(2, '0')}`;
+  const prev    = new Date(monthY, monthM - 2, 1); // -2 because Date months are 0-indexed
+  const prevY = prev.getFullYear(), prevM = prev.getMonth() + 1;
+  const fromPrev = `${prevY}-${String(prevM).padStart(2, '0')}-01`;
+  const toPrev   = `${prevY}-${String(prevM).padStart(2, '0')}-${String(new Date(prevY, prevM, 0).getDate()).padStart(2, '0')}`;
+
+  // Sum income/expense for a date range (1 query, GROUP BY type)
+  const totalsStmt = db.prepare(`
+    SELECT type, COALESCE(SUM(amount_cents), 0) AS total
+    FROM finance_transactions
+    WHERE user_id = ? AND transaction_date BETWEEN ? AND ?
+    GROUP BY type
+  `);
+  const totalsFor = (from, to) => {
+    const rows = totalsStmt.all(req.user.id, from, to);
+    let income = 0, expense = 0;
+    for (const r of rows) {
+      if (r.type === 'income')  income  = r.total;
+      if (r.type === 'expense') expense = r.total;
+    }
+    return { income_cents: income, expense_cents: expense, balance_cents: income - expense };
+  };
+
+  // Top 5 expense categories this month (excludes "sem categoria" — those
+  // show up in the transaction list anyway and would dominate sometimes)
+  const topCategories = db.prepare(`
+    SELECT c.id, c.name, c.icon, c.kind, SUM(t.amount_cents) AS total
+    FROM finance_transactions t
+    JOIN finance_categories c ON c.id = t.category_id
+    WHERE t.user_id = ? AND t.transaction_date BETWEEN ? AND ? AND t.type = 'expense'
+    GROUP BY c.id, c.name, c.icon, c.kind
+    ORDER BY total DESC
+    LIMIT 5
+  `).all(req.user.id, fromCur, toCur);
+
+  res.json({
+    month: `${y}-${m}`,
+    current: totalsFor(fromCur, toCur),
+    previous: totalsFor(fromPrev, toPrev),
+    top_expense_categories: topCategories,
+  });
+});
+
 app.delete('/api/finance/transactions/:id', requireFinancialFlag, (req, res) => {
   const id = parseInt(req.params.id);
   const existing = db.prepare('SELECT id FROM finance_transactions WHERE id = ? AND user_id = ?').get(id, req.user.id);

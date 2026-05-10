@@ -671,11 +671,18 @@ async function renderFinancial() {
     try { f.categories = await api.get('/api/finance/categories'); }
     catch { f.categories = []; }
   }
-  await loadFinanceTransactions();
+  // Run transactions list and summary in parallel — both hit the DB but on
+  // different aggregations, so the round-trip is one network turn.
+  const [_, summary] = await Promise.all([
+    loadFinanceTransactions(),
+    api.get(`/api/finance/summary?month=${f.monthYM}`).catch(() => null),
+  ]);
+  f.summary = summary;
   renderFinanceMonthLabel();
   renderFinanceCategoryFilter();
-  renderFinanceList();
   renderFinanceSummary();
+  renderFinanceTopCategories();
+  renderFinanceList();
 }
 
 async function loadFinanceTransactions() {
@@ -709,27 +716,87 @@ function renderFinanceCategoryFilter() {
   }
 }
 
+// Renders a small "X% vs mês anterior" indicator. Direction good/bad depends
+// on the metric: more income = good (green), more expense = bad (red),
+// positive balance delta = good. Returns HTML or empty string when there's
+// no previous data to compare against.
+function deltaPill(currentCents, previousCents, kind) {
+  if (!previousCents) return '<span class="finance-delta neutral">—</span>';
+  const diff = currentCents - previousCents;
+  if (diff === 0) return '<span class="finance-delta neutral">igual ao mês anterior</span>';
+  const pct = Math.round((Math.abs(diff) / Math.abs(previousCents)) * 100);
+  const arrow = diff > 0 ? '↑' : '↓';
+  // 'good' meaning depends on context: more income = good; more expense = bad
+  const good = (kind === 'income' && diff > 0) || (kind === 'expense' && diff < 0) || (kind === 'balance' && diff > 0);
+  const cls = good ? 'positive' : 'negative';
+  return `<span class="finance-delta ${cls}">${arrow} ${pct}% vs mês anterior</span>`;
+}
+
 function renderFinanceSummary() {
   const f = state.finance;
-  let income = 0, expense = 0;
-  for (const t of f.transactions) {
-    if (t.type === 'income')  income  += t.amount_cents;
-    if (t.type === 'expense') expense += t.amount_cents;
+  // Server provides authoritative monthly totals; fall back to client-side
+  // sum of the visible list if the summary endpoint failed.
+  let income, expense, balance, prev;
+  if (f.summary?.current) {
+    income  = f.summary.current.income_cents;
+    expense = f.summary.current.expense_cents;
+    balance = f.summary.current.balance_cents;
+    prev    = f.summary.previous;
+  } else {
+    income = expense = 0;
+    for (const t of f.transactions) {
+      if (t.type === 'income')  income  += t.amount_cents;
+      if (t.type === 'expense') expense += t.amount_cents;
+    }
+    balance = income - expense;
+    prev = null;
   }
-  const balance = income - expense;
   const balanceClass = balance >= 0 ? 'positive' : 'negative';
   $('#financeSummary').innerHTML = `
     <div class="finance-summary-card">
       <span class="finance-summary-label">Receitas</span>
       <span class="finance-summary-value positive">${centsToBrl(income)}</span>
+      ${prev ? deltaPill(income, prev.income_cents, 'income') : ''}
     </div>
     <div class="finance-summary-card">
       <span class="finance-summary-label">Despesas</span>
       <span class="finance-summary-value negative">${centsToBrl(expense)}</span>
+      ${prev ? deltaPill(expense, prev.expense_cents, 'expense') : ''}
     </div>
     <div class="finance-summary-card finance-summary-balance">
       <span class="finance-summary-label">Saldo do mês</span>
       <span class="finance-summary-value ${balanceClass}">${centsToBrl(balance)}</span>
+      ${prev ? deltaPill(balance, prev.balance_cents, 'balance') : ''}
+    </div>
+  `;
+}
+
+function renderFinanceTopCategories() {
+  const wrap = $('#financeTopCategories');
+  if (!wrap) return;
+  const top = state.finance.summary?.top_expense_categories || [];
+  if (top.length === 0) {
+    wrap.innerHTML = '';
+    return;
+  }
+  const max = Math.max(...top.map(c => c.total));
+  // Bar chart: each row is icon + name | bar | value. Bar width is % of max.
+  wrap.innerHTML = `
+    <div class="finance-top-header">Top categorias (despesas do mês)</div>
+    <div class="finance-top-list">
+      ${top.map(c => {
+        const pct = Math.max(2, Math.round((c.total / max) * 100));
+        return `
+          <div class="finance-top-row">
+            <span class="finance-top-icon">${c.icon || '📦'}</span>
+            <span class="finance-top-name">${escapeHtml(c.name)}</span>
+            <div class="finance-top-bar-track">
+              <div class="finance-top-bar-fill" style="width:${pct}%"></div>
+            </div>
+            <span class="finance-top-amount">${centsToBrl(c.total)}</span>
+          </div>
+        `;
+      }).join('')}
     </div>
   `;
 }

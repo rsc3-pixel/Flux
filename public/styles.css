@@ -1504,6 +1504,61 @@ body {
 .finance-summary-value { font-size: 20px; font-weight: 700; }
 .finance-summary-value.positive { color: #16a34a; }
 .finance-summary-value.negative { color: var(--color-danger); }
+.finance-delta {
+  font-size: 11px;
+  margin-top: 2px;
+  font-weight: 500;
+}
+.finance-delta.positive { color: #16a34a; }
+.finance-delta.negative { color: var(--color-danger); }
+.finance-delta.neutral  { color: var(--color-text-secondary); }
+
+/* Top categories: simple horizontal bar chart, no SVG library needed */
+.finance-top-categories { margin-bottom: 16px; }
+.finance-top-categories:empty { display: none; }
+.finance-top-header {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.finance-top-list {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.finance-top-row {
+  display: grid;
+  grid-template-columns: 24px minmax(60px, 1fr) minmax(80px, 2fr) auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.finance-top-icon { font-size: 16px; text-align: center; }
+.finance-top-name { color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.finance-top-bar-track {
+  background: var(--color-surface-2);
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.finance-top-bar-fill {
+  height: 100%;
+  background: var(--color-danger);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.finance-top-amount {
+  font-size: 12px;
+  color: var(--color-text);
+  font-weight: 600;
+  text-align: right;
+}
 
 .finance-filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .finance-filters select {
