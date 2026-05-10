@@ -161,6 +161,23 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
 `);
 
+// ---- CARD ↔ FINANCE LINK (Iteration 8.5 / PR5) ----
+// A card with category 'conta-a-pagar' can carry a money amount + a finance
+// category. When the user clicks "Marcar como pago" the server creates a
+// finance transaction (source_card_id = card.id) and stamps cards.paid_at,
+// which makes the kanban preview show "✅ Pago em DD/MM" and locks the
+// "Marcar como pago" action.
+const cardColsForFinance = db.prepare('PRAGMA table_info(cards)').all().map(c => c.name);
+if (!cardColsForFinance.includes('amount_cents')) {
+  db.exec('ALTER TABLE cards ADD COLUMN amount_cents INTEGER');
+}
+if (!cardColsForFinance.includes('finance_category_id')) {
+  db.exec('ALTER TABLE cards ADD COLUMN finance_category_id INTEGER REFERENCES finance_categories(id) ON DELETE SET NULL');
+}
+if (!cardColsForFinance.includes('paid_at')) {
+  db.exec('ALTER TABLE cards ADD COLUMN paid_at DATETIME');
+}
+
 // ---- FINANCIAL MODULE — schema only (Iteration 8.1) ----
 // Personal finance tracking (Pierre-style, much smaller scope). No multi-
 // account support yet — every transaction is implicitly in the user's single

@@ -124,6 +124,7 @@ const CATEGORIES = {
   'bug':           { label: 'BUG',           color: '#F97316' },
   'ui-design':     { label: 'UI DESIGN',     color: '#06B6D4' },
   'lista':         { label: 'LISTA',         color: '#059669' },
+  'conta-a-pagar': { label: '💸 CONTA A PAGAR', color: '#DB2777' },
 };
 
 // DiceBear avatar URL (SVG, no API key needed)
@@ -1336,6 +1337,22 @@ function renderCard(card) {
   titleEl.textContent = card.title;
   el.appendChild(titleEl);
 
+  // CONTA-A-PAGAR cards: show R$ value + paid status (or due date hint) on the
+  // card preview so the kanban board itself acts as a "bills calendar".
+  if (card.category === 'conta-a-pagar' && (card.amount_cents != null || card.paid_at)) {
+    const billPreview = document.createElement('div');
+    billPreview.className = 'card-bill-preview';
+    const amt = card.amount_cents != null ? centsToBrl(card.amount_cents) : '—';
+    if (card.paid_at) {
+      const dt = new Date(card.paid_at.replace(' ', 'T') + 'Z');
+      billPreview.innerHTML = `<span class="card-bill-amount">${amt}</span><span class="card-bill-paid">✅ Pago em ${dt.toLocaleDateString('pt-BR')}</span>`;
+    } else {
+      const due = card.due_date ? new Date(card.due_date + 'T00:00:00').toLocaleDateString('pt-BR') : null;
+      billPreview.innerHTML = `<span class="card-bill-amount">${amt}</span>${due ? `<span class="card-bill-due">vence ${due}</span>` : ''}`;
+    }
+    el.appendChild(billPreview);
+  }
+
   // LISTA cards: show a read-only preview of items right on the card so you
   // can see what's on the list at a glance. Tapping the card opens the
   // dedicated lista view (a clean editor — not the full Editar Card modal).
@@ -2148,6 +2165,9 @@ function openCardModal(card, listId = null) {
   $('#cardStartInput').value = card?.start_date || '';
   $('#cardDueInput').value = card?.due_date || '';
   $('#cardAssigneeInput').value = card?.assignee || '';
+  // Finance bridge fields (only visible when category=conta-a-pagar)
+  $('#cardAmountInput').value = card?.amount_cents != null ? (card.amount_cents / 100).toFixed(2).replace('.', ',') : '';
+  applyCardFinanceVisibility(card);
   $('#cardModalTitle').textContent = card ? 'Editar Card' : 'Novo Card';
   $('#cardDeleteBtn').style.display = card ? '' : 'none';
 
@@ -2170,6 +2190,66 @@ function openCardModal(card, listId = null) {
 
   $('#cardModal').classList.remove('hidden');
   setTimeout(() => $('#cardTitleInput').focus(), 50);
+}
+
+// Show/hide the finance bridge fields based on the current category. Card may
+// be null (new card), undefined (creating), or a saved object (with paid_at).
+async function applyCardFinanceVisibility(card) {
+  const isConta = $('#cardCategoryInput').value === 'conta-a-pagar';
+  const section = $('#cardFinanceSection');
+  section.classList.toggle('hidden', !isConta);
+  if (!isConta) return;
+
+  // Lazy-load finance categories if not in state.finance.categories yet
+  if (!state.finance.categories || state.finance.categories.length === 0) {
+    try { state.finance.categories = await api.get('/api/finance/categories'); }
+    catch { state.finance.categories = []; }
+  }
+  // Populate the finance category select with EXPENSE categories only
+  const sel = $('#cardFinanceCategoryInput');
+  sel.innerHTML = '<option value="">— sem categoria —</option>';
+  for (const c of state.finance.categories.filter(c => !c.archived && c.kind === 'expense')) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.icon || ''} ${c.name}`.trim();
+    sel.appendChild(opt);
+  }
+  if (card?.finance_category_id) sel.value = card.finance_category_id;
+
+  // "Marcar como pago" button vs "✅ Pago" badge depending on paid_at
+  const paidBadge = $('#cardPaidBadge');
+  const paidBtn   = $('#cardMarkPaidBtn');
+  if (card?.paid_at) {
+    const dt = new Date(card.paid_at.replace(' ', 'T') + 'Z');
+    paidBadge.textContent = `✅ Pago em ${dt.toLocaleDateString('pt-BR')}`;
+    paidBadge.classList.remove('hidden');
+    paidBtn.classList.add('hidden');
+  } else {
+    paidBadge.classList.add('hidden');
+    paidBtn.classList.remove('hidden');
+    // Disable until card has been saved (needs id + amount > 0)
+    const hasId  = !!$('#cardId').value;
+    const hasAmt = parseBrlToCents($('#cardAmountInput').value) > 0;
+    paidBtn.disabled = !hasId || !hasAmt;
+    paidBtn.title = !hasId ? 'Salve o card primeiro' : (!hasAmt ? 'Informe o valor primeiro' : '');
+  }
+}
+
+async function markCardAsPaid() {
+  const id = $('#cardId').value;
+  if (!id) return;
+  if (!confirm('Marcar este card como pago? Vai criar uma transação em Finanças e não dá pra desfazer.')) return;
+  try {
+    await api.post(`/api/cards/${id}/mark-paid`, {});
+  } catch (err) {
+    alert('Falha ao marcar como pago. Verifica se o valor está preenchido.');
+    return;
+  }
+  // Refresh the board so the card preview shows the paid badge + close modal
+  closeAllModals();
+  if (state.currentBoardId) await loadBoard(state.currentBoardId);
+  // Bonus: if user is on Finanças view, reload it so the new tx appears
+  if (state.view === 'financial') renderFinancial();
 }
 
 // ============ CHECKLIST ============
@@ -2328,6 +2408,18 @@ async function saveCard(e) {
     due_date:    $('#cardDueInput').value || null,
     assignee:    $('#cardAssigneeInput').value,
   };
+  // Finance bridge — only send fields when category is conta-a-pagar.
+  // Sending null clears the values on the server (PATCH endpoint handles it).
+  if (payload.category === 'conta-a-pagar') {
+    const amt = parseBrlToCents($('#cardAmountInput').value);
+    payload.amount_cents = amt && amt > 0 ? amt : null;
+    const fcid = $('#cardFinanceCategoryInput').value;
+    payload.finance_category_id = fcid ? parseInt(fcid) : null;
+  } else {
+    // User changed away from conta-a-pagar — wipe the finance bridge values
+    payload.amount_cents = null;
+    payload.finance_category_id = null;
+  }
   if (!payload.title) return;
   if (id) await api.put(`/api/cards/${id}`, payload);
   else    await api.post('/api/cards', payload);
@@ -3382,6 +3474,17 @@ function setupEventListeners() {
   // Card modal
   $('#cardForm').addEventListener('submit', saveCard);
   $('#cardDeleteBtn').addEventListener('click', deleteCard);
+  // Card-finance bridge: re-render finance section when category or amount changes,
+  // and wire the "Marcar como pago" button
+  $('#cardCategoryInput').addEventListener('change', () => applyCardFinanceVisibility(null));
+  $('#cardAmountInput')?.addEventListener('input', () => {
+    const btn = $('#cardMarkPaidBtn');
+    if (!btn || btn.classList.contains('hidden')) return;
+    const hasId  = !!$('#cardId').value;
+    const hasAmt = parseBrlToCents($('#cardAmountInput').value) > 0;
+    btn.disabled = !hasId || !hasAmt;
+  });
+  $('#cardMarkPaidBtn')?.addEventListener('click', markCardAsPaid);
 
   // Checklist (event delegation on the list — items are dynamic)
   $('#checklistList').addEventListener('click', (e) => {

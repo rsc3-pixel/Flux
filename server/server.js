@@ -66,6 +66,7 @@ const ROLE_VALUES = new Set(['admin', 'membro']);
 const CATEGORY_VALUES = new Set([
   'design-system', 'critico', 'pesquisa', 'feature',
   'documentacao', 'bug', 'ui-design', 'lista',
+  'conta-a-pagar', // Special: when set, card can carry amount + finance category, and "Marcar como pago" creates a finance transaction
 ]);
 const DATE_RE  = /^\d{4}-\d{2}-\d{2}$/;
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -657,7 +658,8 @@ app.put('/api/cards/:id', (req, res) => {
   if (!boardId) return res.status(404).json({ error: 'Card não encontrado' });
   if (!auth.canEdit(req.user.id, boardId))
     return res.status(403).json({ error: 'Sem permissão' });
-  const { title, description, priority, due_date, start_date, assignee, list_id, position, category } = req.body;
+  const { title, description, priority, due_date, start_date, assignee, list_id, position, category,
+          amount_cents, finance_category_id } = req.body;
 
   const p = validPriority(priority);
   const sd = validDate(start_date);
@@ -667,6 +669,29 @@ app.put('/api/cards/:id', (req, res) => {
   if (sd === undefined) return res.status(400).json({ error: 'start_date inválida (YYYY-MM-DD)' });
   if (dd === undefined) return res.status(400).json({ error: 'due_date inválida (YYYY-MM-DD)' });
   if (cat === undefined) return res.status(400).json({ error: 'category inválida' });
+
+  // amount_cents (only meaningful for category='conta-a-pagar', but accepted
+  // generically — UI hides the field for other categories). null clears it.
+  let amt = null;
+  if (amount_cents !== undefined) {
+    if (amount_cents === null || amount_cents === '') amt = null;
+    else {
+      const n = Math.round(Number(amount_cents));
+      if (!Number.isInteger(n) || n < 0 || n > 99999999999) return res.status(400).json({ error: 'amount_cents inválido' });
+      amt = n;
+    }
+  }
+  // finance_category_id: validate it belongs to the requesting user (anti-IDOR)
+  let fcid = undefined; // undefined = don't change
+  if (finance_category_id !== undefined) {
+    if (finance_category_id === null || finance_category_id === '') fcid = null;
+    else {
+      const cid = parseInt(finance_category_id);
+      const owns = db.prepare('SELECT 1 FROM finance_categories WHERE id = ? AND user_id = ?').get(cid, req.user.id);
+      if (!owns) return res.status(400).json({ error: 'finance_category_id inválido' });
+      fcid = cid;
+    }
+  }
 
   // If user is moving the card to another list, the target list must be on a board they can edit
   if (list_id != null) {
@@ -678,15 +703,17 @@ app.put('/api/cards/:id', (req, res) => {
   const before = db.prepare('SELECT * FROM cards WHERE id = ?').get(id);
   db.prepare(`
     UPDATE cards SET
-      title       = COALESCE(?, title),
-      description = COALESCE(?, description),
-      priority    = COALESCE(?, priority),
-      due_date    = ?,
-      start_date  = ?,
-      assignee    = COALESCE(?, assignee),
-      list_id     = COALESCE(?, list_id),
-      position    = COALESCE(?, position),
-      category    = ?
+      title               = COALESCE(?, title),
+      description         = COALESCE(?, description),
+      priority            = COALESCE(?, priority),
+      due_date            = ?,
+      start_date          = ?,
+      assignee            = COALESCE(?, assignee),
+      list_id             = COALESCE(?, list_id),
+      position            = COALESCE(?, position),
+      category            = ?,
+      amount_cents        = COALESCE(?, amount_cents),
+      finance_category_id = COALESCE(?, finance_category_id)
     WHERE id = ?
   `).run(
     title       != null ? String(title).slice(0, 200) : null,
@@ -694,8 +721,19 @@ app.put('/api/cards/:id', (req, res) => {
     p,
     dd, sd,
     assignee    != null ? String(assignee).slice(0, 100) : null,
-    list_id, position, cat, id
+    list_id, position, cat,
+    amount_cents !== undefined ? amt : null,  // explicit null clears via COALESCE-only-on-undefined; for clearing, we'd need a different SQL
+    fcid !== undefined ? fcid : null,
+    id
   );
+  // COALESCE quirk: passing `null` keeps the existing value. To EXPLICITLY clear
+  // amount_cents/finance_category_id (user passed null in body), we follow up:
+  if (amount_cents === null || amount_cents === '') {
+    db.prepare('UPDATE cards SET amount_cents = NULL WHERE id = ?').run(id);
+  }
+  if (finance_category_id === null || finance_category_id === '') {
+    db.prepare('UPDATE cards SET finance_category_id = NULL WHERE id = ?').run(id);
+  }
   const after = db.prepare('SELECT * FROM cards WHERE id = ?').get(id);
   // Log a "moved" event when the list changed; otherwise a generic "updated"
   if (before && after.list_id !== before.list_id) {
@@ -708,6 +746,55 @@ app.put('/api/cards/:id', (req, res) => {
       { from: before.title, to: after.title });
   }
   res.json(after);
+});
+
+// "Marcar como pago" — bridge between Kanban and Finanças. Card must:
+//   - have category 'conta-a-pagar' (so the action only fires where it makes sense)
+//   - have amount_cents > 0 (the amount to record)
+//   - not be already paid (paid_at IS NULL)
+// Creates a finance transaction (type=expense, amount=card.amount_cents,
+// category=card.finance_category_id, date=card.due_date or today,
+// source_card_id=card.id) and stamps cards.paid_at. The card stays where
+// it is — the user can move it to "Concluído" themselves if they want.
+app.post('/api/cards/:id/mark-paid', (req, res) => {
+  const id = parseInt(req.params.id);
+  const boardId = auth.boardIdFromCard(id);
+  if (!boardId) return res.status(404).json({ error: 'Card não encontrado' });
+  if (!auth.canEdit(req.user.id, boardId))
+    return res.status(403).json({ error: 'Sem permissão' });
+
+  const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(id);
+  if (!card) return res.status(404).json({ error: 'Card não encontrado' });
+  if (card.category !== 'conta-a-pagar')
+    return res.status(400).json({ error: 'Card não é uma conta a pagar' });
+  if (!card.amount_cents || card.amount_cents <= 0)
+    return res.status(400).json({ error: 'Defina o valor antes de marcar como pago' });
+  if (card.paid_at)
+    return res.status(409).json({ error: 'Esta conta já foi marcada como paga' });
+
+  // If finance_category_id is set, validate it still belongs to the user (could have been deleted)
+  let categoryIdToUse = null;
+  if (card.finance_category_id) {
+    const owns = db.prepare('SELECT 1 FROM finance_categories WHERE id = ? AND user_id = ?')
+                   .get(card.finance_category_id, req.user.id);
+    if (owns) categoryIdToUse = card.finance_category_id;
+  }
+  // Use due_date if set; otherwise today (UTC date — keeps it deterministic)
+  const txDate = card.due_date || new Date().toISOString().slice(0, 10);
+
+  const result = db.transaction(() => {
+    const info = db.prepare(`
+      INSERT INTO finance_transactions
+        (user_id, category_id, type, amount_cents, description, transaction_date, source_card_id)
+      VALUES (?, ?, 'expense', ?, ?, ?, ?)
+    `).run(req.user.id, categoryIdToUse, card.amount_cents, card.title, txDate, card.id);
+    db.prepare('UPDATE cards SET paid_at = CURRENT_TIMESTAMP WHERE id = ?').run(card.id);
+    return info.lastInsertRowid;
+  })();
+
+  logBoardActivity(req, 'card.paid', boardId, 'card', card.id,
+    { title: card.title, amount_cents: card.amount_cents });
+  res.json({ transaction_id: result, paid_at: new Date().toISOString(), amount_cents: card.amount_cents });
 });
 
 app.delete('/api/cards/:id', (req, res) => {

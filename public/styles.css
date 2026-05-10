@@ -1560,6 +1560,55 @@ body {
   text-align: right;
 }
 
+/* Card ↔ Finance bridge: section in the Editar Card modal + preview pill on
+   the kanban card when category=conta-a-pagar */
+.card-finance-section {
+  background: var(--color-surface-2);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin: 12px 0;
+  border-left: 3px solid #DB2777;
+}
+.card-paid-badge {
+  background: rgba(22, 163, 74, 0.12);
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  margin-bottom: 8px;
+}
+#cardMarkPaidBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card-bill-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(219, 39, 119, 0.08);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.card-bill-amount {
+  font-weight: 700;
+  color: #DB2777;
+}
+.card-bill-due {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+.card-bill-paid {
+  color: #16a34a;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .finance-filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .finance-filters select {
   padding: 8px 12px;

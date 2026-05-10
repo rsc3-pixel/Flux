@@ -539,8 +539,25 @@
             <option value="bug">Bug</option>
             <option value="ui-design">UI Design</option>
             <option value="lista">Lista</option>
+            <option value="conta-a-pagar">💸 Conta a pagar</option>
           </select>
         </label>
+
+        <!-- Finance fields — only shown when category=conta-a-pagar (JS toggles .hidden) -->
+        <div class="card-finance-section hidden" id="cardFinanceSection">
+          <div class="form-row">
+            <label>Valor (R$)
+              <input type="text" id="cardAmountInput" inputmode="decimal" placeholder="0,00" autocomplete="off" />
+            </label>
+            <label>Categoria financeira
+              <select id="cardFinanceCategoryInput">
+                <option value="">— sem categoria —</option>
+              </select>
+            </label>
+          </div>
+          <div id="cardPaidBadge" class="card-paid-badge hidden"></div>
+          <button type="button" class="btn btn-primary btn-block" id="cardMarkPaidBtn">💸 Marcar como pago</button>
+        </div>
 
         <div class="checklist-section" id="checklistSection">
           <div class="checklist-header">

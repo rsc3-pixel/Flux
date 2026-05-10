@@ -12,6 +12,14 @@
 
 const releases = [
   {
+    version: '1.6.3',
+    date: '2026-05-10',
+    notes: [
+      '💸 Card "Conta a pagar" agora vira transação no Finanças automaticamente — escolha a categoria "Conta a pagar" no card, preencha o valor, e use "Marcar como pago" pra registrar a despesa em um clique',
+      '👁️ Card de conta a pagar mostra o valor + status (vence DD/MM ou ✅ pago) direto na visão Kanban',
+    ],
+  },
+  {
     version: '1.6.0',
     date: '2026-05-10',
     notes: [
