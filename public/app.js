@@ -127,6 +127,16 @@ const CATEGORIES = {
   'conta-a-pagar': { label: '💸 CONTA A PAGAR', color: '#DB2777' },
 };
 
+// Returns {label, color} for the card's category pill, or null if no category.
+// Custom category (per-card label+color) takes priority over the whitelist.
+function cardCategoryPill(card) {
+  if (card.custom_category_label && card.custom_category_color) {
+    return { label: card.custom_category_label.toUpperCase(), color: card.custom_category_color };
+  }
+  if (card.category && CATEGORIES[card.category]) return CATEGORIES[card.category];
+  return null;
+}
+
 // DiceBear avatar URL (SVG, no API key needed)
 function avatarUrl(seed, size = 80) {
   const safe = encodeURIComponent((seed || 'anon').toLowerCase().trim());
@@ -1322,14 +1332,15 @@ function renderCard(card) {
   el.className = `card priority-${card.priority || 'media'}`;
   el.dataset.cardId = card.id;
 
-  // Category pill on top (if set)
-  if (card.category && CATEGORIES[card.category]) {
-    const cat = CATEGORIES[card.category];
+  // Category pill on top (if set). Custom category takes priority — when both
+  // exist (shouldn't, server prevents) custom wins.
+  const pillData = cardCategoryPill(card);
+  if (pillData) {
     const pill = document.createElement('div');
     pill.className = 'card-category';
-    pill.style.setProperty('--cat-color', cat.color);
-    pill.style.setProperty('--cat-bg', cat.color + '1A');  // ~10% opacity
-    pill.textContent = cat.label;
+    pill.style.setProperty('--cat-color', pillData.color);
+    pill.style.setProperty('--cat-bg', pillData.color + '1A');  // ~10% opacity
+    pill.textContent = pillData.label;
     el.appendChild(pill);
   }
 
@@ -1610,9 +1621,9 @@ function renderCardsGallery() {
   for (const card of cards) {
     const el = document.createElement('div');
     el.className = `gallery-card priority-${card.priority || 'media'}`;
-    const cat = CATEGORIES[card.category];
-    const catHtml = cat
-      ? `<div class="card-category" style="--cat-color:${cat.color};--cat-bg:${cat.color}1A">${escapeHtml(cat.label)}</div>`
+    const pillData = cardCategoryPill(card);
+    const catHtml = pillData
+      ? `<div class="card-category" style="--cat-color:${pillData.color};--cat-bg:${pillData.color}1A">${escapeHtml(pillData.label)}</div>`
       : '';
     const idHtml = state.settings.showIds ? `<div class="card-id">#${parseInt(card.id) || 0}</div>` : '';
     el.innerHTML = `
@@ -2171,7 +2182,12 @@ function openCardModal(card, listId = null) {
   $('#cardListId').value = card?.list_id || listId || '';
   $('#cardTitleInput').value = card?.title || '';
   $('#cardDescInput').value = card?.description || '';
-  $('#cardCategoryInput').value = card?.category || '';
+  // Custom category overrides the whitelist value when both somehow exist.
+  const hasCustom = !!(card?.custom_category_label && card?.custom_category_color);
+  $('#cardCategoryInput').value = hasCustom ? '__custom__' : (card?.category || '');
+  $('#cardCustomCategoryLabel').value = hasCustom ? card.custom_category_label : '';
+  $('#cardCustomCategoryColor').value = hasCustom ? card.custom_category_color : '#6366F1';
+  applyCardCustomCategoryVisibility();
   $('#cardPriorityInput').value = card?.priority || 'media';
   $('#cardStartInput').value = card?.start_date || '';
   $('#cardDueInput').value = card?.due_date || '';
@@ -2206,6 +2222,13 @@ function openCardModal(card, listId = null) {
 
   $('#cardModal').classList.remove('hidden');
   setTimeout(() => $('#cardTitleInput').focus(), 50);
+}
+
+// Show/hide the custom-category inputs (label + color) based on the current
+// select value. The select's "__custom__" sentinel is the only trigger.
+function applyCardCustomCategoryVisibility() {
+  const isCustom = $('#cardCategoryInput').value === '__custom__';
+  $('#cardCustomCategorySection').classList.toggle('hidden', !isCustom);
 }
 
 // Show/hide the finance bridge fields based on the current category. Card may
@@ -2417,15 +2440,25 @@ function mirrorChecklistToBoard(cardId) {
 async function saveCard(e) {
   e.preventDefault();
   const id = $('#cardId').value;
+  const catSelect = $('#cardCategoryInput').value;
+  const isCustom = catSelect === '__custom__';
+  const customLabel = isCustom ? $('#cardCustomCategoryLabel').value.trim() : '';
+  const customColor = isCustom ? $('#cardCustomCategoryColor').value : '';
+  if (isCustom && !customLabel) {
+    alert('Digite um nome pra categoria personalizada.');
+    return;
+  }
   const payload = {
     list_id:     parseInt($('#cardListId').value),
     title:       $('#cardTitleInput').value.trim(),
     description: $('#cardDescInput').value,
-    category:    $('#cardCategoryInput').value || null,
+    category:    isCustom ? null : (catSelect || null),
     priority:    $('#cardPriorityInput').value,
     start_date:  $('#cardStartInput').value || null,
     due_date:    $('#cardDueInput').value || null,
     assignee:    $('#cardAssigneeInput').value,
+    custom_category_label: isCustom ? customLabel : null,
+    custom_category_color: isCustom ? customColor : null,
   };
   // Finance bridge — only send fields when (a) user has finance access AND
   // (b) category is conta-a-pagar. Without finance access, omitting these
@@ -3498,7 +3531,10 @@ function setupEventListeners() {
   $('#cardDeleteBtn').addEventListener('click', deleteCard);
   // Card-finance bridge: re-render finance section when category or amount changes,
   // and wire the "Marcar como pago" button
-  $('#cardCategoryInput').addEventListener('change', () => applyCardFinanceVisibility(null));
+  $('#cardCategoryInput').addEventListener('change', () => {
+    applyCardFinanceVisibility(null);
+    applyCardCustomCategoryVisibility();
+  });
   $('#cardAmountInput')?.addEventListener('input', () => {
     const btn = $('#cardMarkPaidBtn');
     if (!btn || btn.classList.contains('hidden')) return;

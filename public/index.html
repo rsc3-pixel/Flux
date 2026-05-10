@@ -540,8 +540,21 @@
             <option value="ui-design">UI Design</option>
             <option value="lista">Lista</option>
             <option value="conta-a-pagar">💸 Conta a pagar</option>
+            <option value="__custom__">+ Personalizado…</option>
           </select>
         </label>
+
+        <!-- Custom category fields — only shown when category=__custom__ -->
+        <div class="card-custom-category hidden" id="cardCustomCategorySection">
+          <div class="form-row">
+            <label>Nome
+              <input type="text" id="cardCustomCategoryLabel" maxlength="30" placeholder="Ex: Urgente, Pessoal..." />
+            </label>
+            <label>Cor
+              <input type="color" id="cardCustomCategoryColor" value="#6366F1" />
+            </label>
+          </div>
+        </div>
 
         <!-- Finance fields — only shown when category=conta-a-pagar (JS toggles .hidden) -->
         <div class="card-finance-section hidden" id="cardFinanceSection">

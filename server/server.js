@@ -79,6 +79,19 @@ function validColor(v)     { return v == null ? null : (COLOR_RE.test(v) ? v : u
 function validRole(v)      { return ROLE_VALUES.has(v); }
 // Returns: null/value if OK, or `undefined` to signal "invalid"
 
+const CUSTOM_LABEL_MAX = 30;
+function validCustomCategoryLabel(v) {
+  if (v == null || v === '') return null;
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  if (t.length < 1 || t.length > CUSTOM_LABEL_MAX) return undefined;
+  return t;
+}
+function validCustomCategoryColor(v) {
+  if (v == null || v === '') return null;
+  return typeof v === 'string' && COLOR_RE.test(v) ? v : undefined;
+}
+
 // =================================================================
 // AUTH
 // =================================================================
@@ -625,7 +638,8 @@ app.post('/api/lists/reorder', (req, res) => {
 // =================================================================
 app.post('/api/cards', (req, res) => {
   const { list_id, title, description, priority, due_date, start_date, assignee, category,
-          amount_cents, finance_category_id } = req.body;
+          amount_cents, finance_category_id,
+          custom_category_label, custom_category_color } = req.body;
   if (!list_id || !title) return res.status(400).json({ error: 'list_id e title obrigatórios' });
   const boardId = auth.boardIdFromList(list_id);
   if (!auth.canEdit(req.user.id, boardId))
@@ -635,10 +649,19 @@ app.post('/api/cards', (req, res) => {
   const sd = validDate(start_date);
   const dd = validDate(due_date);
   const cat = validCategory(category);
+  const customLabel = validCustomCategoryLabel(custom_category_label);
+  const customColor = validCustomCategoryColor(custom_category_color);
   if (p === undefined)  return res.status(400).json({ error: 'priority inválida' });
   if (sd === undefined) return res.status(400).json({ error: 'start_date inválida (YYYY-MM-DD)' });
   if (dd === undefined) return res.status(400).json({ error: 'due_date inválida (YYYY-MM-DD)' });
   if (cat === undefined) return res.status(400).json({ error: 'category inválida' });
+  if (customLabel === undefined) return res.status(400).json({ error: 'custom_category_label inválido (1-30 chars)' });
+  if (customColor === undefined) return res.status(400).json({ error: 'custom_category_color inválida (#RRGGBB)' });
+  // Custom label and color must come together, and cannot coexist with whitelist category
+  if ((customLabel == null) !== (customColor == null))
+    return res.status(400).json({ error: 'custom_category_label e custom_category_color devem vir juntos' });
+  if (customLabel != null && cat != null)
+    return res.status(400).json({ error: 'category e custom category são mutuamente exclusivos' });
   // Finance-access gate (same rule as PUT). Blocks both setting category to
   // conta-a-pagar AND passing amount/finance_category_id directly.
   const finAccess = userHasFinanceAccess(req.user);
@@ -667,11 +690,12 @@ app.post('/api/cards', (req, res) => {
                    .get(list_id).p;
   const info = db.prepare(`
     INSERT INTO cards (list_id, title, description, priority, due_date, start_date, assignee, category,
-                       position, amount_cents, finance_category_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       position, amount_cents, finance_category_id,
+                       custom_category_label, custom_category_color)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(list_id, String(title).slice(0, 200), String(description || '').slice(0, 5000),
          p || 'media', dd, sd, String(assignee || '').slice(0, 100), cat,
-         maxPos + 1, amt, fcid);
+         maxPos + 1, amt, fcid, customLabel, customColor);
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
   const listTitle = db.prepare('SELECT title FROM lists WHERE id = ?').get(list_id)?.title;
   logBoardActivity(req, 'card.created', boardId, 'card', card.id, { title: card.title, list: listTitle });
@@ -685,16 +709,25 @@ app.put('/api/cards/:id', (req, res) => {
   if (!auth.canEdit(req.user.id, boardId))
     return res.status(403).json({ error: 'Sem permissão' });
   const { title, description, priority, due_date, start_date, assignee, list_id, position, category,
-          amount_cents, finance_category_id } = req.body;
+          amount_cents, finance_category_id,
+          custom_category_label, custom_category_color } = req.body;
 
   const p = validPriority(priority);
   const sd = validDate(start_date);
   const dd = validDate(due_date);
   const cat = validCategory(category);
+  const customLabel = validCustomCategoryLabel(custom_category_label);
+  const customColor = validCustomCategoryColor(custom_category_color);
   if (p === undefined)  return res.status(400).json({ error: 'priority inválida' });
   if (sd === undefined) return res.status(400).json({ error: 'start_date inválida (YYYY-MM-DD)' });
   if (dd === undefined) return res.status(400).json({ error: 'due_date inválida (YYYY-MM-DD)' });
   if (cat === undefined) return res.status(400).json({ error: 'category inválida' });
+  if (customLabel === undefined) return res.status(400).json({ error: 'custom_category_label inválido (1-30 chars)' });
+  if (customColor === undefined) return res.status(400).json({ error: 'custom_category_color inválida (#RRGGBB)' });
+  if ((customLabel == null) !== (customColor == null))
+    return res.status(400).json({ error: 'custom_category_label e custom_category_color devem vir juntos' });
+  if (customLabel != null && cat != null)
+    return res.status(400).json({ error: 'category e custom category são mutuamente exclusivos' });
   // Same finance-access gate as POST /api/cards. Also blocks anyone without
   // access from passing amount_cents or finance_category_id (silent no-op
   // would leave them confused; explicit 403 is honest).
@@ -737,17 +770,19 @@ app.put('/api/cards/:id', (req, res) => {
   const before = db.prepare('SELECT * FROM cards WHERE id = ?').get(id);
   db.prepare(`
     UPDATE cards SET
-      title               = COALESCE(?, title),
-      description         = COALESCE(?, description),
-      priority            = COALESCE(?, priority),
-      due_date            = ?,
-      start_date          = ?,
-      assignee            = COALESCE(?, assignee),
-      list_id             = COALESCE(?, list_id),
-      position            = COALESCE(?, position),
-      category            = ?,
-      amount_cents        = COALESCE(?, amount_cents),
-      finance_category_id = COALESCE(?, finance_category_id)
+      title                 = COALESCE(?, title),
+      description           = COALESCE(?, description),
+      priority              = COALESCE(?, priority),
+      due_date              = ?,
+      start_date            = ?,
+      assignee              = COALESCE(?, assignee),
+      list_id               = COALESCE(?, list_id),
+      position              = COALESCE(?, position),
+      category              = ?,
+      amount_cents          = COALESCE(?, amount_cents),
+      finance_category_id   = COALESCE(?, finance_category_id),
+      custom_category_label = ?,
+      custom_category_color = ?
     WHERE id = ?
   `).run(
     title       != null ? String(title).slice(0, 200) : null,
@@ -758,6 +793,7 @@ app.put('/api/cards/:id', (req, res) => {
     list_id, position, cat,
     amount_cents !== undefined ? amt : null,  // explicit null clears via COALESCE-only-on-undefined; for clearing, we'd need a different SQL
     fcid !== undefined ? fcid : null,
+    customLabel, customColor,
     id
   );
   // COALESCE quirk: passing `null` keeps the existing value. To EXPLICITLY clear

@@ -178,6 +178,16 @@ if (!cardColsForFinance.includes('paid_at')) {
   db.exec('ALTER TABLE cards ADD COLUMN paid_at DATETIME');
 }
 
+// ---- CUSTOM CATEGORY (per-card label + color) ----
+// User-defined category instead of the whitelist. When set, `category` MUST be
+// NULL (server enforces). Color stored as #RRGGBB.
+if (!cardColsForFinance.includes('custom_category_label')) {
+  db.exec('ALTER TABLE cards ADD COLUMN custom_category_label TEXT');
+}
+if (!cardColsForFinance.includes('custom_category_color')) {
+  db.exec('ALTER TABLE cards ADD COLUMN custom_category_color TEXT');
+}
+
 // ---- FINANCIAL MODULE — schema only (Iteration 8.1) ----
 // Personal finance tracking (Pierre-style, much smaller scope). No multi-
 // account support yet — every transaction is implicitly in the user's single

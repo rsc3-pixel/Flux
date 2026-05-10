@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.7.0',
+    date: '2026-05-10',
+    notes: [
+      '🎨 Categoria personalizada nos cards — escolha "+ Personalizado…" no campo Categoria do card pra definir um nome e cor próprios (até 30 caracteres). Ideal pra rotular do seu jeito sem se prender às categorias padrão',
+    ],
+  },
+  {
     version: '1.6.3',
     date: '2026-05-10',
     notes: [
