@@ -363,10 +363,16 @@ function applyFeatureFlags() {
   // 'report_bug' OFF → hide the "Reportar bug" button in the sidebar
   const bugBtn = document.getElementById('reportBugBtn');
   if (bugBtn) bugBtn.classList.toggle('hidden', !flagEnabled('report_bug'));
-  // 'financial' OFF → hide the "Finanças" sidebar tab. Server backs this up
-  // with a 503 on every /api/finance/* if flag goes off mid-session.
+  // 'financial' visibility:
+  //   - flag ON  → all users see it
+  //   - flag OFF → only the real owner sees it (in-development override)
+  //   - preview mode → respects the flag like a regular user (so owner can
+  //     QA exactly what others see). isOwnerEffective() returns false in preview.
+  // Server enforces the same rule: requireFinancialFlag lets owners through
+  // regardless of the flag state.
   const finBtn = document.getElementById('financialNavBtn');
-  if (finBtn) finBtn.classList.toggle('hidden', !flagEnabled('financial'));
+  const finVisible = flagEnabled('financial') || isOwnerEffective();
+  if (finBtn) finBtn.classList.toggle('hidden', !finVisible);
 }
 
 function renderUserMenu() {

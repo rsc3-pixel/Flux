@@ -1255,7 +1255,13 @@ app.get('/api/workspaces/:id/analytics', (req, res) => {
 
 // Gate all /api/finance/* behind the feature flag. Returns 503 with the
 // (optional) maintenance message from the flag — same UX as any other flag.
+//
+// Exception: real owners always pass, even when the flag is off. This lets
+// the owner build/QA the module against real data before exposing to others.
+// Once the flag is flipped on, the exception becomes redundant (everyone
+// passes) but keeping it is harmless.
 function requireFinancialFlag(req, res, next) {
+  if (req.user?.is_owner) return next();
   const f = db.prepare("SELECT enabled, message FROM feature_flags WHERE key = 'financial'").get();
   if (!f || !f.enabled) {
     return res.status(503).json({
