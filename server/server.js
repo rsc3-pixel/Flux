@@ -638,6 +638,10 @@ app.post('/api/cards', (req, res) => {
   if (sd === undefined) return res.status(400).json({ error: 'start_date inválida (YYYY-MM-DD)' });
   if (dd === undefined) return res.status(400).json({ error: 'due_date inválida (YYYY-MM-DD)' });
   if (cat === undefined) return res.status(400).json({ error: 'category inválida' });
+  // Block 'conta-a-pagar' for users without finance access — they'd be able
+  // to create transactions via mark-paid that they can't see anywhere.
+  if (cat === 'conta-a-pagar' && !userHasFinanceAccess(req.user))
+    return res.status(403).json({ error: 'Sem acesso ao módulo financeiro' });
 
   const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM cards WHERE list_id = ?')
                    .get(list_id).p;
@@ -669,6 +673,14 @@ app.put('/api/cards/:id', (req, res) => {
   if (sd === undefined) return res.status(400).json({ error: 'start_date inválida (YYYY-MM-DD)' });
   if (dd === undefined) return res.status(400).json({ error: 'due_date inválida (YYYY-MM-DD)' });
   if (cat === undefined) return res.status(400).json({ error: 'category inválida' });
+  // Same finance-access gate as POST /api/cards. Also blocks anyone without
+  // access from passing amount_cents or finance_category_id (silent no-op
+  // would leave them confused; explicit 403 is honest).
+  const finAccess = userHasFinanceAccess(req.user);
+  if (cat === 'conta-a-pagar' && !finAccess)
+    return res.status(403).json({ error: 'Sem acesso ao módulo financeiro' });
+  if (!finAccess && (amount_cents !== undefined || finance_category_id !== undefined))
+    return res.status(403).json({ error: 'Sem acesso ao módulo financeiro' });
 
   // amount_cents (only meaningful for category='conta-a-pagar', but accepted
   // generically — UI hides the field for other categories). null clears it.
@@ -757,6 +769,10 @@ app.put('/api/cards/:id', (req, res) => {
 // source_card_id=card.id) and stamps cards.paid_at. The card stays where
 // it is — the user can move it to "Concluído" themselves if they want.
 app.post('/api/cards/:id/mark-paid', (req, res) => {
+  // Finance-access gate: non-owners without the 'financial' flag can't
+  // create transactions through the kanban side door.
+  if (!userHasFinanceAccess(req.user))
+    return res.status(403).json({ error: 'Sem acesso ao módulo financeiro' });
   const id = parseInt(req.params.id);
   const boardId = auth.boardIdFromCard(id);
   if (!boardId) return res.status(404).json({ error: 'Card não encontrado' });
@@ -1340,13 +1356,20 @@ app.get('/api/workspaces/:id/analytics', (req, res) => {
 // query is scoped to req.user.id, never accepts user_id from the body/params.
 // =================================================================
 
+// Returns true when the user can interact with the finance module — owner
+// always; non-owners only when the 'financial' flag is on. Reused by both
+// the /api/finance/* middleware AND the card → finance bridge endpoints
+// (PUT /api/cards, POST /mark-paid) so non-owners can't create transactions
+// silently via the kanban side door when the module is hidden from them.
+function userHasFinanceAccess(user) {
+  if (!user) return false;
+  if (user.is_owner) return true;
+  const f = db.prepare("SELECT enabled FROM feature_flags WHERE key = 'financial'").get();
+  return !!(f && f.enabled);
+}
+
 // Gate all /api/finance/* behind the feature flag. Returns 503 with the
 // (optional) maintenance message from the flag — same UX as any other flag.
-//
-// Exception: real owners always pass, even when the flag is off. This lets
-// the owner build/QA the module against real data before exposing to others.
-// Once the flag is flipped on, the exception becomes redundant (everyone
-// passes) but keeping it is harmless.
 function requireFinancialFlag(req, res, next) {
   if (req.user?.is_owner) return next();
   const f = db.prepare("SELECT enabled, message FROM feature_flags WHERE key = 'financial'").get();

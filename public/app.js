@@ -190,6 +190,15 @@ async function loadFlags() {
   catch { state.flags = {}; /* fail-open: features stay visible */ }
 }
 
+// Whether the current user can interact with the finance module — owner
+// always; non-owners only when the 'financial' flag is on. Used to gate
+// the kanban-side bridge (category 'conta-a-pagar', mark-paid button, etc)
+// so non-owners don't create finance state they can't see anywhere. Server
+// enforces the same rule with userHasFinanceAccess().
+function hasFinanceAccess() {
+  return flagEnabled('financial') || isOwnerEffective();
+}
+
 // ============ AUTH BOOT ============
 async function bootAuth() {
   // Each step is wrapped so a single failure can't strand the user on a blank
@@ -1339,7 +1348,9 @@ function renderCard(card) {
 
   // CONTA-A-PAGAR cards: show R$ value + paid status (or due date hint) on the
   // card preview so the kanban board itself acts as a "bills calendar".
-  if (card.category === 'conta-a-pagar' && (card.amount_cents != null || card.paid_at)) {
+  // Hidden for users without finance access — they'd see numbers they can't
+  // act on, which is more confusing than helpful.
+  if (card.category === 'conta-a-pagar' && hasFinanceAccess() && (card.amount_cents != null || card.paid_at)) {
     const billPreview = document.createElement('div');
     billPreview.className = 'card-bill-preview';
     const amt = card.amount_cents != null ? centsToBrl(card.amount_cents) : '—';
@@ -2165,7 +2176,12 @@ function openCardModal(card, listId = null) {
   $('#cardStartInput').value = card?.start_date || '';
   $('#cardDueInput').value = card?.due_date || '';
   $('#cardAssigneeInput').value = card?.assignee || '';
-  // Finance bridge fields (only visible when category=conta-a-pagar)
+  // Hide the "Conta a pagar" option from users without finance access (server
+  // also rejects with 403 if they bypass the UI). Cards already saved with
+  // this category remain editable but the finance section stays hidden.
+  const contaOption = $('#cardCategoryInput').querySelector('option[value="conta-a-pagar"]');
+  if (contaOption) contaOption.hidden = !hasFinanceAccess();
+  // Finance bridge fields (only visible when category=conta-a-pagar AND user has access)
   $('#cardAmountInput').value = card?.amount_cents != null ? (card.amount_cents / 100).toFixed(2).replace('.', ',') : '';
   applyCardFinanceVisibility(card);
   $('#cardModalTitle').textContent = card ? 'Editar Card' : 'Novo Card';
@@ -2194,11 +2210,14 @@ function openCardModal(card, listId = null) {
 
 // Show/hide the finance bridge fields based on the current category. Card may
 // be null (new card), undefined (creating), or a saved object (with paid_at).
+// Also hidden when the user has no finance access — defense in depth alongside
+// the option-hiding in openCardModal (covers cards already saved with this category).
 async function applyCardFinanceVisibility(card) {
   const isConta = $('#cardCategoryInput').value === 'conta-a-pagar';
   const section = $('#cardFinanceSection');
-  section.classList.toggle('hidden', !isConta);
-  if (!isConta) return;
+  const visible = isConta && hasFinanceAccess();
+  section.classList.toggle('hidden', !visible);
+  if (!visible) return;
 
   // Lazy-load finance categories if not in state.finance.categories yet
   if (!state.finance.categories || state.finance.categories.length === 0) {
@@ -2408,17 +2427,20 @@ async function saveCard(e) {
     due_date:    $('#cardDueInput').value || null,
     assignee:    $('#cardAssigneeInput').value,
   };
-  // Finance bridge — only send fields when category is conta-a-pagar.
-  // Sending null clears the values on the server (PATCH endpoint handles it).
-  if (payload.category === 'conta-a-pagar') {
-    const amt = parseBrlToCents($('#cardAmountInput').value);
-    payload.amount_cents = amt && amt > 0 ? amt : null;
-    const fcid = $('#cardFinanceCategoryInput').value;
-    payload.finance_category_id = fcid ? parseInt(fcid) : null;
-  } else {
-    // User changed away from conta-a-pagar — wipe the finance bridge values
-    payload.amount_cents = null;
-    payload.finance_category_id = null;
+  // Finance bridge — only send fields when (a) user has finance access AND
+  // (b) category is conta-a-pagar. Without finance access, omitting these
+  // fields prevents pointless 403s from the server (which would also reject).
+  if (hasFinanceAccess()) {
+    if (payload.category === 'conta-a-pagar') {
+      const amt = parseBrlToCents($('#cardAmountInput').value);
+      payload.amount_cents = amt && amt > 0 ? amt : null;
+      const fcid = $('#cardFinanceCategoryInput').value;
+      payload.finance_category_id = fcid ? parseInt(fcid) : null;
+    } else {
+      // User changed away from conta-a-pagar — wipe the finance bridge values
+      payload.amount_cents = null;
+      payload.finance_category_id = null;
+    }
   }
   if (!payload.title) return;
   if (id) await api.put(`/api/cards/${id}`, payload);
