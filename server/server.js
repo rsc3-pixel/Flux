@@ -624,7 +624,8 @@ app.post('/api/lists/reorder', (req, res) => {
 // CARDS
 // =================================================================
 app.post('/api/cards', (req, res) => {
-  const { list_id, title, description, priority, due_date, start_date, assignee, category } = req.body;
+  const { list_id, title, description, priority, due_date, start_date, assignee, category,
+          amount_cents, finance_category_id } = req.body;
   if (!list_id || !title) return res.status(400).json({ error: 'list_id e title obrigatórios' });
   const boardId = auth.boardIdFromList(list_id);
   if (!auth.canEdit(req.user.id, boardId))
@@ -638,18 +639,39 @@ app.post('/api/cards', (req, res) => {
   if (sd === undefined) return res.status(400).json({ error: 'start_date inválida (YYYY-MM-DD)' });
   if (dd === undefined) return res.status(400).json({ error: 'due_date inválida (YYYY-MM-DD)' });
   if (cat === undefined) return res.status(400).json({ error: 'category inválida' });
-  // Block 'conta-a-pagar' for users without finance access — they'd be able
-  // to create transactions via mark-paid that they can't see anywhere.
-  if (cat === 'conta-a-pagar' && !userHasFinanceAccess(req.user))
+  // Finance-access gate (same rule as PUT). Blocks both setting category to
+  // conta-a-pagar AND passing amount/finance_category_id directly.
+  const finAccess = userHasFinanceAccess(req.user);
+  if (cat === 'conta-a-pagar' && !finAccess)
     return res.status(403).json({ error: 'Sem acesso ao módulo financeiro' });
+  if (!finAccess && (amount_cents != null || finance_category_id != null))
+    return res.status(403).json({ error: 'Sem acesso ao módulo financeiro' });
+
+  // Validate amount_cents (integer >= 0) and finance_category_id (belongs to user)
+  let amt = null;
+  if (amount_cents != null && amount_cents !== '') {
+    const n = Math.round(Number(amount_cents));
+    if (!Number.isInteger(n) || n < 0 || n > 99999999999)
+      return res.status(400).json({ error: 'amount_cents inválido' });
+    amt = n;
+  }
+  let fcid = null;
+  if (finance_category_id != null && finance_category_id !== '') {
+    const cid = parseInt(finance_category_id);
+    const owns = db.prepare('SELECT 1 FROM finance_categories WHERE id = ? AND user_id = ?').get(cid, req.user.id);
+    if (!owns) return res.status(400).json({ error: 'finance_category_id inválido' });
+    fcid = cid;
+  }
 
   const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM cards WHERE list_id = ?')
                    .get(list_id).p;
   const info = db.prepare(`
-    INSERT INTO cards (list_id, title, description, priority, due_date, start_date, assignee, category, position)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO cards (list_id, title, description, priority, due_date, start_date, assignee, category,
+                       position, amount_cents, finance_category_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(list_id, String(title).slice(0, 200), String(description || '').slice(0, 5000),
-         p || 'media', dd, sd, String(assignee || '').slice(0, 100), cat, maxPos + 1);
+         p || 'media', dd, sd, String(assignee || '').slice(0, 100), cat,
+         maxPos + 1, amt, fcid);
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid);
   const listTitle = db.prepare('SELECT title FROM lists WHERE id = ?').get(list_id)?.title;
   logBoardActivity(req, 'card.created', boardId, 'card', card.id, { title: card.title, list: listTitle });
