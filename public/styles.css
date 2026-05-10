@@ -1474,6 +1474,149 @@ body {
 }
 #deleteUserConfirm:focus { outline: none; border-color: var(--color-danger); }
 
+/* ============ FINANCE VIEW ============ */
+.finance-header { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+.finance-month-nav { display: flex; align-items: center; gap: 4px; }
+.finance-month-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 130px;
+  text-align: center;
+}
+.finance-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.finance-summary-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.finance-summary-balance { background: var(--color-surface-2); }
+.finance-summary-label { font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.finance-summary-value { font-size: 20px; font-weight: 700; }
+.finance-summary-value.positive { color: #16a34a; }
+.finance-summary-value.negative { color: var(--color-danger); }
+
+.finance-filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.finance-filters select {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  flex: 1;
+  min-width: 140px;
+}
+
+.finance-list { display: flex; flex-direction: column; gap: 16px; padding-bottom: 80px; }
+.finance-empty { text-align: center; padding: 40px 20px; }
+.finance-date-group { display: flex; flex-direction: column; gap: 4px; }
+.finance-date-header {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 4px;
+  margin-bottom: 4px;
+}
+.finance-tx-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.finance-tx-row:hover { background: var(--color-surface-hover); }
+.finance-tx-icon { font-size: 20px; flex-shrink: 0; }
+.finance-tx-info { flex: 1; min-width: 0; }
+.finance-tx-cat { font-size: 13px; color: var(--color-text); font-weight: 500; }
+.finance-tx-desc { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+.finance-tx-amount { font-size: 14px; font-weight: 600; flex-shrink: 0; }
+.finance-tx-amount.positive { color: #16a34a; }
+.finance-tx-amount.negative { color: var(--color-danger); }
+
+.finance-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 28px;
+  font-weight: 300;
+  cursor: pointer;
+  box-shadow: var(--shadow-modal);
+  z-index: 50;
+}
+.finance-fab:hover { transform: scale(1.05); }
+
+/* Finance modal: type toggle + form */
+.finance-tx-type-toggle { display: flex; gap: 6px; margin-bottom: 14px; }
+.finance-tx-type-toggle button {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.finance-tx-type-toggle button.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+#financeTxModal label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 10px;
+}
+#financeTxModal input,
+#financeTxModal select {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  margin-top: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+#financeTxModal input:focus, #financeTxModal select:focus {
+  outline: none; border-color: var(--color-primary);
+}
+.modal-footer .footer-left { margin-right: auto; }
+
+@media (max-width: 600px) {
+  .finance-summary { grid-template-columns: 1fr; }
+  .finance-summary-card { padding: 10px 14px; }
+  .finance-summary-value { font-size: 18px; }
+  .finance-fab { bottom: calc(var(--bottom-nav-h) + 16px); }
+}
+
 /* Preview-mode banner: always visible at the top while an owner is impersonating
    the regular-user experience. Acts as the only escape hatch since the Admin
    sidebar button is hidden in this mode. */

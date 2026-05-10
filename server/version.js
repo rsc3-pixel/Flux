@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.6.0',
+    date: '2026-05-10',
+    notes: [
+      '💰 Módulo Finanças (em construção, controlado por feature flag) — cadastro de receitas e despesas, filtros por mês, dashboard simples. Owner pode ligar/desligar pelo painel admin.',
+    ],
+  },
+  {
     version: '1.5.5',
     date: '2026-05-09',
     notes: [

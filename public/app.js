@@ -13,6 +13,15 @@ const state = {
   workspace: null,                    // { id, name, plan, board_count }
   pendingInviteToken: null,           // captured from ?invite=... in URL
   flags: {},                          // { key: {enabled, message} } from /api/flags
+  finance: {                          // financial module — populated when view opens
+    categories: [],
+    transactions: [],
+    monthYM: null,                    // 'YYYY-MM' currently shown
+    filterType: '',                   // '' | 'income' | 'expense'
+    filterCategory: '',               // '' | category id
+    editingId: null,
+    editingType: 'expense',
+  },
   boards: [],
   currentBoardId: null,
   currentBoard: null,                 // also includes .role for current user
@@ -47,6 +56,7 @@ const ICONS = {
   'more-vertical':     '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
   'pencil':            '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
   'trash':             '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
+  'dollar-sign':       '<line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
   'plus':              '<path d="M5 12h14"/><path d="M12 5v14"/>',
   'x':                 '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   'log-out':           '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
@@ -353,7 +363,10 @@ function applyFeatureFlags() {
   // 'report_bug' OFF → hide the "Reportar bug" button in the sidebar
   const bugBtn = document.getElementById('reportBugBtn');
   if (bugBtn) bugBtn.classList.toggle('hidden', !flagEnabled('report_bug'));
-  // Future flags get wired here as features are added (financial, etc.)
+  // 'financial' OFF → hide the "Finanças" sidebar tab. Server backs this up
+  // with a 503 on every /api/finance/* if flag goes off mid-session.
+  const finBtn = document.getElementById('financialNavBtn');
+  if (finBtn) finBtn.classList.toggle('hidden', !flagEnabled('financial'));
 }
 
 function renderUserMenu() {
@@ -603,6 +616,252 @@ async function saveFlag(key, patch) {
   }
 }
 
+// ============ FINANCE ============
+// Helpers — money is stored as integer cents server-side; the UI converts
+// on display ("R$ 12,50") and on input parsing ("12,50" or "12.50" → 1250).
+function centsToBrl(cents) {
+  const v = (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `R$ ${v}`;
+}
+function parseBrlToCents(str) {
+  // Accepts "12,50", "12.50", "12", "1.234,56", "1234.56" → 1250 / 1250 / 1200 / 123456 / 123456
+  const cleaned = String(str || '').trim().replace(/[^\d,.\-]/g, '');
+  if (!cleaned) return null;
+  // Brazil-style: comma is decimal sep, dot is thousands. If only dots and no
+  // comma, treat dots as decimal (US-style accident). Tolerant.
+  const hasComma = cleaned.includes(',');
+  const normalized = hasComma
+    ? cleaned.replace(/\./g, '').replace(',', '.')
+    : cleaned;
+  const f = Number(normalized);
+  if (!Number.isFinite(f) || f < 0) return null;
+  return Math.round(f * 100);
+}
+function monthLabel(ym) {
+  // ym = "YYYY-MM"; returns "Maio 2026" pt-BR
+  const [y, m] = ym.split('-').map(Number);
+  const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  return `${months[m - 1]} ${y}`;
+}
+function monthRange(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate(); // day 0 of next month = last day of current
+  return { from: `${ym}-01`, to: `${ym}-${String(last).padStart(2, '0')}` };
+}
+function todayYM() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function renderFinancial() {
+  const f = state.finance;
+  if (!f.monthYM) f.monthYM = todayYM();
+  // Categories rarely change — fetch once per session
+  if (f.categories.length === 0) {
+    try { f.categories = await api.get('/api/finance/categories'); }
+    catch { f.categories = []; }
+  }
+  await loadFinanceTransactions();
+  renderFinanceMonthLabel();
+  renderFinanceCategoryFilter();
+  renderFinanceList();
+  renderFinanceSummary();
+}
+
+async function loadFinanceTransactions() {
+  const f = state.finance;
+  const { from, to } = monthRange(f.monthYM);
+  const params = new URLSearchParams({ from, to, limit: '500' });
+  if (f.filterType)     params.set('type', f.filterType);
+  if (f.filterCategory) params.set('category', f.filterCategory);
+  try {
+    f.transactions = await api.get('/api/finance/transactions?' + params.toString());
+  } catch {
+    f.transactions = [];
+  }
+}
+
+function renderFinanceMonthLabel() {
+  $('#financeMonthLabel').textContent = monthLabel(state.finance.monthYM);
+}
+
+function renderFinanceCategoryFilter() {
+  const sel = $('#financeFilterCategory');
+  if (!sel) return;
+  const current = state.finance.filterCategory;
+  sel.innerHTML = '<option value="">Todas categorias</option>';
+  for (const c of state.finance.categories.filter(c => !c.archived)) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.icon || ''} ${c.name} (${c.kind === 'income' ? 'receita' : 'despesa'})`.trim();
+    if (String(c.id) === String(current)) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function renderFinanceSummary() {
+  const f = state.finance;
+  let income = 0, expense = 0;
+  for (const t of f.transactions) {
+    if (t.type === 'income')  income  += t.amount_cents;
+    if (t.type === 'expense') expense += t.amount_cents;
+  }
+  const balance = income - expense;
+  const balanceClass = balance >= 0 ? 'positive' : 'negative';
+  $('#financeSummary').innerHTML = `
+    <div class="finance-summary-card">
+      <span class="finance-summary-label">Receitas</span>
+      <span class="finance-summary-value positive">${centsToBrl(income)}</span>
+    </div>
+    <div class="finance-summary-card">
+      <span class="finance-summary-label">Despesas</span>
+      <span class="finance-summary-value negative">${centsToBrl(expense)}</span>
+    </div>
+    <div class="finance-summary-card finance-summary-balance">
+      <span class="finance-summary-label">Saldo do mês</span>
+      <span class="finance-summary-value ${balanceClass}">${centsToBrl(balance)}</span>
+    </div>
+  `;
+}
+
+function renderFinanceList() {
+  const list = $('#financeList');
+  list.innerHTML = '';
+  const txs = state.finance.transactions;
+  if (txs.length === 0) {
+    list.innerHTML = '<p class="muted-small finance-empty">Nenhuma transação neste período. Use o + pra adicionar.</p>';
+    return;
+  }
+  // Group by date for visual hierarchy
+  const groups = {};
+  for (const t of txs) {
+    if (!groups[t.transaction_date]) groups[t.transaction_date] = [];
+    groups[t.transaction_date].push(t);
+  }
+  const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+  for (const date of sortedDates) {
+    const dateGroup = document.createElement('div');
+    dateGroup.className = 'finance-date-group';
+    const [y, m, d] = date.split('-');
+    dateGroup.innerHTML = `<div class="finance-date-header">${d}/${m}/${y}</div>`;
+    for (const t of groups[date]) {
+      const row = document.createElement('div');
+      row.className = 'finance-tx-row';
+      const sign = t.type === 'income' ? '+' : '-';
+      const colorClass = t.type === 'income' ? 'positive' : 'negative';
+      const icon = t.category_icon || (t.type === 'income' ? '💰' : '💸');
+      const cat = t.category_name || '(sem categoria)';
+      const desc = t.description ? `<div class="finance-tx-desc">${escapeHtml(t.description)}</div>` : '';
+      row.innerHTML = `
+        <span class="finance-tx-icon">${icon}</span>
+        <div class="finance-tx-info">
+          <div class="finance-tx-cat">${escapeHtml(cat)}</div>
+          ${desc}
+        </div>
+        <span class="finance-tx-amount ${colorClass}">${sign} ${centsToBrl(t.amount_cents)}</span>
+      `;
+      row.addEventListener('click', () => openFinanceTxModal(t));
+      dateGroup.appendChild(row);
+    }
+    list.appendChild(dateGroup);
+  }
+}
+
+function changeFinanceMonth(delta) {
+  const [y, m] = state.finance.monthYM.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  state.finance.monthYM = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  renderFinancial();
+}
+
+// ---- Modal: create / edit a transaction ----
+function openFinanceTxModal(tx) {
+  const f = state.finance;
+  f.editingId = tx?.id || null;
+  f.editingType = tx?.type || 'expense';
+  $('#financeTxModalTitle').textContent = tx ? 'Editar transação' : 'Nova transação';
+  $('#financeTxAmount').value      = tx ? (tx.amount_cents / 100).toFixed(2).replace('.', ',') : '';
+  $('#financeTxDate').value        = tx ? tx.transaction_date : todayISO();
+  $('#financeTxDescription').value = tx ? (tx.description || '') : '';
+  $('#financeTxError').classList.add('hidden');
+  $('#financeTxDeleteBtn').classList.toggle('hidden', !tx);
+  // Type toggle visual
+  $$('#financeTxModal [data-tx-type]').forEach(b =>
+    b.classList.toggle('active', b.dataset.txType === f.editingType)
+  );
+  renderFinanceTxModalCategories();
+  if (tx?.category_id) $('#financeTxCategory').value = tx.category_id;
+  $('#financeTxModal').classList.remove('hidden');
+  setTimeout(() => $('#financeTxAmount').focus(), 50);
+}
+function closeFinanceTxModal() {
+  $('#financeTxModal').classList.add('hidden');
+  state.finance.editingId = null;
+}
+function renderFinanceTxModalCategories() {
+  const sel = $('#financeTxCategory');
+  sel.innerHTML = '<option value="">— sem categoria —</option>';
+  const cats = state.finance.categories.filter(c => !c.archived && c.kind === state.finance.editingType);
+  for (const c of cats) {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.icon || ''} ${c.name}`.trim();
+    sel.appendChild(opt);
+  }
+}
+function setFinanceTxType(type) {
+  state.finance.editingType = type;
+  $$('#financeTxModal [data-tx-type]').forEach(b =>
+    b.classList.toggle('active', b.dataset.txType === type)
+  );
+  renderFinanceTxModalCategories();
+}
+async function saveFinanceTx() {
+  const f = state.finance;
+  const errEl = $('#financeTxError');
+  errEl.classList.add('hidden');
+  const amount_cents = parseBrlToCents($('#financeTxAmount').value);
+  if (amount_cents === null || amount_cents <= 0) {
+    errEl.textContent = 'Valor inválido. Use formato 12,50';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const transaction_date = $('#financeTxDate').value;
+  if (!transaction_date) {
+    errEl.textContent = 'Data obrigatória';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const description = $('#financeTxDescription').value.trim();
+  const category_id = $('#financeTxCategory').value || null;
+  const payload = { type: f.editingType, amount_cents, transaction_date, description, category_id: category_id ? parseInt(category_id) : null };
+  try {
+    if (f.editingId) await api.patch(`/api/finance/transactions/${f.editingId}`, payload);
+    else             await api.post('/api/finance/transactions', payload);
+    closeFinanceTxModal();
+    await renderFinancial();
+  } catch {
+    errEl.textContent = 'Falha ao salvar. Tente de novo.';
+    errEl.classList.remove('hidden');
+  }
+}
+async function deleteFinanceTx() {
+  const id = state.finance.editingId;
+  if (!id) return;
+  if (!confirm('Excluir esta transação? Não dá pra desfazer.')) return;
+  try {
+    await api.delete(`/api/finance/transactions/${id}`);
+    closeFinanceTxModal();
+    await renderFinancial();
+  } catch {
+    alert('Falha ao excluir. Tente de novo.');
+  }
+}
+
 // ============ AUTH FORMS ============
 let _authListenersDone = false;
 function setupAuthListeners() {
@@ -754,7 +1013,7 @@ function applyRoleVisibility() {
 }
 
 // Workspace-level views don't operate on a board
-const WORKSPACE_VIEWS = new Set(['settings', 'activity', 'analytics', 'admin']);
+const WORKSPACE_VIEWS = new Set(['settings', 'activity', 'analytics', 'admin', 'financial']);
 
 function switchView(viewName) {
   // Remember the last per-board view, so workspace-level views (Settings,
@@ -770,7 +1029,7 @@ function switchView(viewName) {
     kanban: '#kanbanView', table: '#tableView', cards: '#cardsView',
     calendar: '#calendarView', gantt: '#ganttView', dashboard: '#dashboardView',
     settings: '#settingsView', activity: '#activityView', analytics: '#analyticsView',
-    admin: '#adminView',
+    admin: '#adminView', financial: '#financialView',
   };
   $(map[viewName])?.classList.remove('hidden');
   // Hide per-board view tabs when in a workspace-level view
@@ -785,6 +1044,7 @@ function renderCurrentView() {
   if (state.view === 'activity')  return renderActivity();
   if (state.view === 'analytics') return renderWorkspaceAnalytics();
   if (state.view === 'admin')     return renderAdmin();
+  if (state.view === 'financial') return renderFinancial();
   if (!state.currentBoard) return;
   if (state.view === 'kanban')    renderKanban();
   if (state.view === 'table')     renderTable();
@@ -3001,6 +3261,29 @@ function setupEventListeners() {
 
   // Admin: preview-mode exit button (in the persistent yellow banner)
   $('#previewExitBtn')?.addEventListener('click', exitPreview);
+
+  // Finance view + modal
+  $('#financeMonthPrev')?.addEventListener('click', () => changeFinanceMonth(-1));
+  $('#financeMonthNext')?.addEventListener('click', () => changeFinanceMonth(+1));
+  $('#financeFilterType')?.addEventListener('change', (e) => {
+    state.finance.filterType = e.target.value;
+    renderFinancial();
+  });
+  $('#financeFilterCategory')?.addEventListener('change', (e) => {
+    state.finance.filterCategory = e.target.value;
+    renderFinancial();
+  });
+  $('#financeAddBtn')?.addEventListener('click', () => openFinanceTxModal(null));
+  $('#financeTxCloseBtn')?.addEventListener('click', closeFinanceTxModal);
+  $('#financeTxCancelBtn')?.addEventListener('click', closeFinanceTxModal);
+  $('#financeTxSaveBtn')?.addEventListener('click', saveFinanceTx);
+  $('#financeTxDeleteBtn')?.addEventListener('click', deleteFinanceTx);
+  $$('#financeTxModal [data-tx-type]').forEach(b =>
+    b.addEventListener('click', () => setFinanceTxType(b.dataset.txType))
+  );
+  $('#financeTxModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'financeTxModal') closeFinanceTxModal();
+  });
 
   // Admin: delete-user confirmation modal
   $('#deleteUserCloseBtn')?.addEventListener('click', closeDeleteUserModal);

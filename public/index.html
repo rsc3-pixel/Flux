@@ -97,6 +97,8 @@
         <nav class="ws-nav">
           <button class="ws-nav-item" data-view="activity"  data-icon="bell"        data-anim="wiggle">Atividade</button>
           <button class="ws-nav-item" data-view="analytics" data-icon="bar-chart-3" data-anim="bounce">Analytics</button>
+          <!-- Finance tab — JS reveals only when feature flag 'financial' is on -->
+          <button class="ws-nav-item hidden" id="financialNavBtn" data-view="financial" data-icon="dollar-sign" data-anim="pop">Finanças</button>
           <!-- Admin tab — JS reveals only when state.user.is_owner is true -->
           <button class="ws-nav-item hidden" id="adminNavBtn" data-view="admin" data-icon="shield" data-anim="pop">Admin</button>
           <button class="ws-nav-item" id="reportBugBtn"     data-icon="bug"         data-anim="shake">Reportar bug</button>
@@ -315,6 +317,75 @@
         </div>
       </div>
     </section>
+
+    <!-- FINANCE — gated by the 'financial' feature flag; UI populated by renderFinancial() -->
+    <section id="financialView" class="board-view hidden">
+      <div class="board-header finance-header">
+        <h2>Finanças</h2>
+        <div class="finance-month-nav">
+          <button id="financeMonthPrev" class="btn btn-ghost" data-icon="chevron-left" data-icon-only="true" aria-label="Mês anterior"></button>
+          <span id="financeMonthLabel" class="finance-month-label">—</span>
+          <button id="financeMonthNext" class="btn btn-ghost" data-icon="chevron-right" data-icon-only="true" aria-label="Próximo mês"></button>
+        </div>
+      </div>
+
+      <div class="finance-summary" id="financeSummary"></div>
+
+      <div class="finance-filters">
+        <select id="financeFilterType">
+          <option value="">Todas</option>
+          <option value="income">Receitas</option>
+          <option value="expense">Despesas</option>
+        </select>
+        <select id="financeFilterCategory">
+          <option value="">Todas categorias</option>
+        </select>
+      </div>
+
+      <div id="financeList" class="finance-list"></div>
+
+      <button type="button" class="finance-fab" id="financeAddBtn" aria-label="Nova transação">+</button>
+    </section>
+
+    <!-- Modal: create/edit a finance transaction -->
+    <div class="modal-backdrop hidden" id="financeTxModal">
+      <div class="modal">
+        <header class="modal-header">
+          <h3 id="financeTxModalTitle">Nova transação</h3>
+          <button class="modal-close" id="financeTxCloseBtn" data-icon="x" data-icon-only="true" data-anim="pop" aria-label="Fechar"></button>
+        </header>
+        <div class="modal-body">
+          <div class="finance-tx-type-toggle">
+            <button type="button" data-tx-type="expense" class="active">💸 Despesa</button>
+            <button type="button" data-tx-type="income">💰 Receita</button>
+          </div>
+
+          <label>Valor (R$)
+            <input type="text" id="financeTxAmount" inputmode="decimal" placeholder="0,00" autocomplete="off" />
+          </label>
+          <label>Data
+            <input type="date" id="financeTxDate" />
+          </label>
+          <label>Categoria
+            <select id="financeTxCategory"></select>
+          </label>
+          <label>Descrição (opcional)
+            <input type="text" id="financeTxDescription" maxlength="500" placeholder="Ex: almoço" />
+          </label>
+          <p class="auth-error hidden" id="financeTxError"></p>
+
+          <footer class="modal-footer">
+            <div class="footer-left">
+              <button type="button" class="btn btn-danger-ghost hidden" id="financeTxDeleteBtn">Excluir</button>
+            </div>
+            <div class="footer-right">
+              <button type="button" class="btn btn-ghost" id="financeTxCancelBtn">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="financeTxSaveBtn">Salvar</button>
+            </div>
+          </footer>
+        </div>
+      </div>
+    </div>
 
     <!-- ADMIN (owner only — JS hides the nav button + protects the route via /api/admin/*) -->
     <section id="adminView" class="board-view hidden">
