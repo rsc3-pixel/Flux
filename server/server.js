@@ -1246,6 +1246,192 @@ app.get('/api/workspaces/:id/analytics', (req, res) => {
   res.json({ totals, completedThisWeek, topAssignees, cardsByBoard, activityByDay });
 });
 
+// =================================================================
+// FINANCE — personal finance module (Iteration 8.2 / PR2)
+// All routes here require auth (already enforced by app.use('/api', requireAuth))
+// PLUS the 'financial' feature flag must be enabled. RBAC is per-user — every
+// query is scoped to req.user.id, never accepts user_id from the body/params.
+// =================================================================
+
+// Gate all /api/finance/* behind the feature flag. Returns 503 with the
+// (optional) maintenance message from the flag — same UX as any other flag.
+function requireFinancialFlag(req, res, next) {
+  const f = db.prepare("SELECT enabled, message FROM feature_flags WHERE key = 'financial'").get();
+  if (!f || !f.enabled) {
+    return res.status(503).json({
+      error: f?.message || 'Módulo financeiro temporariamente indisponível',
+    });
+  }
+  next();
+}
+
+// Validators (kept inline — small, no need for a class)
+const FINANCE_KIND = new Set(['income', 'expense']);
+function parseAmountCents(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isInteger(n) || n < 0 || n > 99999999999) return null; // cap ~R$ 999M
+  return n;
+}
+function parseDate(v) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  // Accept ISO dates only — no Date parsing magic, avoids timezone surprises
+  return v;
+}
+
+// ---- CATEGORIES ----
+app.get('/api/finance/categories', requireFinancialFlag, (req, res) => {
+  // Lazy seed — first time the user opens Finanças, populate the 11 defaults.
+  db.ensureDefaultCategories(req.user.id);
+  const rows = db.prepare(`
+    SELECT id, name, kind, icon, position, archived
+    FROM finance_categories
+    WHERE user_id = ?
+    ORDER BY archived ASC, kind DESC, position ASC, id ASC
+  `).all(req.user.id);
+  res.json(rows.map(r => ({ ...r, archived: !!r.archived })));
+});
+
+app.post('/api/finance/categories', requireFinancialFlag, (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 50);
+  const kind = req.body?.kind;
+  if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
+  if (!FINANCE_KIND.has(kind)) return res.status(400).json({ error: 'Tipo deve ser income ou expense' });
+  const icon = String(req.body?.icon || '').slice(0, 8);
+  const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS m FROM finance_categories WHERE user_id = ? AND kind = ?')
+                   .get(req.user.id, kind).m;
+  const info = db.prepare(
+    'INSERT INTO finance_categories (user_id, name, kind, icon, position) VALUES (?, ?, ?, ?, ?)'
+  ).run(req.user.id, name, kind, icon, maxPos + 1);
+  res.status(201).json({ id: info.lastInsertRowid, name, kind, icon, position: maxPos + 1, archived: false });
+});
+
+app.patch('/api/finance/categories/:id', requireFinancialFlag, (req, res) => {
+  const id = parseInt(req.params.id);
+  const existing = db.prepare('SELECT * FROM finance_categories WHERE id = ? AND user_id = ?').get(id, req.user.id);
+  if (!existing) return res.status(404).json({ error: 'Categoria não encontrada' });
+  const name = req.body?.name !== undefined ? String(req.body.name).trim().slice(0, 50) : existing.name;
+  if (!name) return res.status(400).json({ error: 'Nome não pode ficar vazio' });
+  const icon = req.body?.icon !== undefined ? String(req.body.icon).slice(0, 8) : existing.icon;
+  const position = req.body?.position !== undefined ? parseInt(req.body.position) : existing.position;
+  const archived = req.body?.archived !== undefined ? (req.body.archived ? 1 : 0) : existing.archived;
+  db.prepare('UPDATE finance_categories SET name = ?, icon = ?, position = ?, archived = ? WHERE id = ?')
+    .run(name, icon, position, archived, id);
+  res.json({ id, name, kind: existing.kind, icon, position, archived: !!archived });
+});
+
+app.delete('/api/finance/categories/:id', requireFinancialFlag, (req, res) => {
+  const id = parseInt(req.params.id);
+  const existing = db.prepare('SELECT id FROM finance_categories WHERE id = ? AND user_id = ?').get(id, req.user.id);
+  if (!existing) return res.status(404).json({ error: 'Categoria não encontrada' });
+  // ON DELETE SET NULL on transactions — past transactions stay, just lose the category.
+  db.prepare('DELETE FROM finance_categories WHERE id = ?').run(id);
+  res.status(204).end();
+});
+
+// ---- TRANSACTIONS ----
+// Filters: from=YYYY-MM-DD, to=YYYY-MM-DD, type=income|expense, category=ID, limit=N (max 500)
+app.get('/api/finance/transactions', requireFinancialFlag, (req, res) => {
+  // All filters reference the transactions table (t.*) — using bare column
+  // names would be ambiguous against the LEFT JOIN with finance_categories.
+  const where = ['t.user_id = ?'];
+  const args = [req.user.id];
+  const from = parseDate(req.query.from || '');
+  const to   = parseDate(req.query.to   || '');
+  if (from) { where.push('t.transaction_date >= ?'); args.push(from); }
+  if (to)   { where.push('t.transaction_date <= ?'); args.push(to); }
+  if (FINANCE_KIND.has(req.query.type)) { where.push('t.type = ?'); args.push(req.query.type); }
+  if (req.query.category) {
+    const cid = parseInt(req.query.category);
+    if (Number.isInteger(cid)) { where.push('t.category_id = ?'); args.push(cid); }
+  }
+  const limit = Math.min(parseInt(req.query.limit) || 200, 500);
+  const rows = db.prepare(`
+    SELECT t.id, t.category_id, t.type, t.amount_cents, t.description,
+           t.transaction_date, t.source_card_id, t.created_at,
+           c.name AS category_name, c.icon AS category_icon
+    FROM finance_transactions t
+    LEFT JOIN finance_categories c ON c.id = t.category_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY t.transaction_date DESC, t.id DESC
+    LIMIT ?
+  `).all(...args, limit);
+  res.json(rows);
+});
+
+app.post('/api/finance/transactions', requireFinancialFlag, (req, res) => {
+  const type = req.body?.type;
+  if (!FINANCE_KIND.has(type)) return res.status(400).json({ error: 'Tipo deve ser income ou expense' });
+  const amount = parseAmountCents(req.body?.amount_cents);
+  if (amount === null) return res.status(400).json({ error: 'Valor inválido (deve ser inteiro em centavos, >= 0)' });
+  const date = parseDate(req.body?.transaction_date);
+  if (!date) return res.status(400).json({ error: 'Data inválida (use YYYY-MM-DD)' });
+  const description = String(req.body?.description || '').slice(0, 500);
+  // Validate category belongs to the user (anti-IDOR — never trust category_id blindly)
+  let categoryId = null;
+  if (req.body?.category_id != null) {
+    const cid = parseInt(req.body.category_id);
+    const cat = db.prepare('SELECT id FROM finance_categories WHERE id = ? AND user_id = ?').get(cid, req.user.id);
+    if (!cat) return res.status(400).json({ error: 'Categoria inválida' });
+    categoryId = cid;
+  }
+  const info = db.prepare(`
+    INSERT INTO finance_transactions
+      (user_id, category_id, type, amount_cents, description, transaction_date)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, categoryId, type, amount, description, date);
+  res.status(201).json({
+    id: info.lastInsertRowid,
+    category_id: categoryId, type, amount_cents: amount, description,
+    transaction_date: date, source_card_id: null,
+  });
+});
+
+app.patch('/api/finance/transactions/:id', requireFinancialFlag, (req, res) => {
+  const id = parseInt(req.params.id);
+  const existing = db.prepare('SELECT * FROM finance_transactions WHERE id = ? AND user_id = ?').get(id, req.user.id);
+  if (!existing) return res.status(404).json({ error: 'Transação não encontrada' });
+  const type = req.body?.type !== undefined
+    ? (FINANCE_KIND.has(req.body.type) ? req.body.type : null)
+    : existing.type;
+  if (!type) return res.status(400).json({ error: 'Tipo inválido' });
+  const amount = req.body?.amount_cents !== undefined
+    ? parseAmountCents(req.body.amount_cents)
+    : existing.amount_cents;
+  if (amount === null) return res.status(400).json({ error: 'Valor inválido' });
+  const date = req.body?.transaction_date !== undefined
+    ? parseDate(req.body.transaction_date)
+    : existing.transaction_date;
+  if (!date) return res.status(400).json({ error: 'Data inválida' });
+  const description = req.body?.description !== undefined
+    ? String(req.body.description).slice(0, 500)
+    : existing.description;
+  let categoryId = existing.category_id;
+  if (req.body?.category_id !== undefined) {
+    if (req.body.category_id === null) {
+      categoryId = null;
+    } else {
+      const cid = parseInt(req.body.category_id);
+      const cat = db.prepare('SELECT id FROM finance_categories WHERE id = ? AND user_id = ?').get(cid, req.user.id);
+      if (!cat) return res.status(400).json({ error: 'Categoria inválida' });
+      categoryId = cid;
+    }
+  }
+  db.prepare(`
+    UPDATE finance_transactions
+    SET category_id = ?, type = ?, amount_cents = ?, description = ?, transaction_date = ?
+    WHERE id = ?
+  `).run(categoryId, type, amount, description, date, id);
+  res.json({ id, category_id: categoryId, type, amount_cents: amount, description, transaction_date: date });
+});
+
+app.delete('/api/finance/transactions/:id', requireFinancialFlag, (req, res) => {
+  const id = parseInt(req.params.id);
+  const existing = db.prepare('SELECT id FROM finance_transactions WHERE id = ? AND user_id = ?').get(id, req.user.id);
+  if (!existing) return res.status(404).json({ error: 'Transação não encontrada' });
+  db.prepare('DELETE FROM finance_transactions WHERE id = ?').run(id);
+  res.status(204).end();
+});
+
 // 404 handler for unmatched API routes (returns JSON instead of HTML)
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Rota não encontrada' }));
 
