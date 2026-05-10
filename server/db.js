@@ -161,6 +161,73 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
 `);
 
+// ---- FINANCIAL MODULE — schema only (Iteration 8.1) ----
+// Personal finance tracking (Pierre-style, much smaller scope). No multi-
+// account support yet — every transaction is implicitly in the user's single
+// "wallet". The future-proof shape is a separate finance_accounts table; for
+// now we just track transactions + categories per user.
+//
+// IMPORTANT: amount stored as INTEGER cents (1250 = R$ 12,50). Avoids the
+// classic float-precision bug (0.1 + 0.2 != 0.3). UI converts on display/input.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS finance_categories (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('income', 'expense')),
+    icon        TEXT NOT NULL DEFAULT '',
+    position    INTEGER NOT NULL DEFAULT 0,
+    archived    INTEGER NOT NULL DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_finance_cat_user ON finance_categories(user_id, kind, position);
+
+  CREATE TABLE IF NOT EXISTS finance_transactions (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id          INTEGER NOT NULL,
+    category_id      INTEGER,
+    type             TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+    amount_cents     INTEGER NOT NULL CHECK (amount_cents >= 0),
+    description      TEXT NOT NULL DEFAULT '',
+    transaction_date DATE NOT NULL,
+    source_card_id   INTEGER,
+    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id)        REFERENCES users(id)               ON DELETE CASCADE,
+    FOREIGN KEY (category_id)    REFERENCES finance_categories(id)  ON DELETE SET NULL,
+    FOREIGN KEY (source_card_id) REFERENCES cards(id)               ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_finance_tx_user_date ON finance_transactions(user_id, transaction_date DESC);
+  CREATE INDEX IF NOT EXISTS idx_finance_tx_category  ON finance_transactions(category_id);
+`);
+
+// Lazy seed of default categories for a user. Called by the finance API
+// before any read so users that never open Finanças don't have rows created
+// uselessly. Idempotent: only inserts if the user has zero categories yet.
+const DEFAULT_CATEGORIES = [
+  { kind: 'expense', name: 'Alimentação',  icon: '🍽️' },
+  { kind: 'expense', name: 'Mercado',      icon: '🛒' },
+  { kind: 'expense', name: 'Moradia',      icon: '🏠' },
+  { kind: 'expense', name: 'Transporte',   icon: '🚗' },
+  { kind: 'expense', name: 'Lazer',        icon: '🎮' },
+  { kind: 'expense', name: 'Saúde',        icon: '💊' },
+  { kind: 'expense', name: 'Educação',     icon: '📚' },
+  { kind: 'expense', name: 'Outros',       icon: '📦' },
+  { kind: 'income',  name: 'Salário',      icon: '💰' },
+  { kind: 'income',  name: 'Freelance',    icon: '💼' },
+  { kind: 'income',  name: 'Outros',       icon: '✨' },
+];
+function ensureDefaultCategories(userId) {
+  const has = db.prepare('SELECT 1 FROM finance_categories WHERE user_id = ? LIMIT 1').get(userId);
+  if (has) return;
+  const insert = db.prepare(
+    'INSERT INTO finance_categories (user_id, name, kind, icon, position) VALUES (?, ?, ?, ?, ?)'
+  );
+  db.transaction(() => {
+    DEFAULT_CATEGORIES.forEach((c, i) => insert.run(userId, c.name, c.kind, c.icon, i));
+  })();
+}
+
 // ---- USER SUSPENSION (Iteration 7.2) ----
 // Soft-disable an account from the admin panel without deleting it. Suspended
 // users can't log in (auth.loadUser drops their sessions) and can't authenticate
@@ -310,5 +377,9 @@ if (boardCount === 0) {
   insertCard.run(todoId,  'Arraste este card para outra lista', '', 'media', 1);
   insertCard.run(doingId, 'Crie novos quadros pelo menu', '', 'baixa', 0);
 }
+
+// Attach the finance helper as a method on the db instance so existing
+// `require('./db')` callers don't break (they get the same db object back).
+db.ensureDefaultCategories = ensureDefaultCategories;
 
 module.exports = db;
