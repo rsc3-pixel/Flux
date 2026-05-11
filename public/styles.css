@@ -1454,7 +1454,8 @@ body {
 .column-toggle-menu label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   padding: 8px 12px;
   font-size: 13px;
   cursor: pointer;
@@ -1927,16 +1928,15 @@ body {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   font-size: 12px;
   color: var(--color-text-secondary);
-  cursor: pointer;
   user-select: none;
 }
-.admin-flag-toggle input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
+.admin-flag-state {
+  font-weight: 600;
+  min-width: 56px;
+  text-align: right;
 }
 .admin-flag-message {
   width: 100%;
@@ -2715,13 +2715,11 @@ body.preview-on .topbar { top: 42px; }
 .extra-board-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: 10px;
+  padding: 6px 0;
   font-size: 13px;
   color: var(--color-text);
-  cursor: pointer;
 }
-.extra-board-row input[type="checkbox"] { cursor: pointer; }
 .extra-board-row .eb-color {
   width: 4px;
   height: 14px;

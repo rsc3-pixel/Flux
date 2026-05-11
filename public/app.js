@@ -615,10 +615,13 @@ function renderAdminFlags(flags) {
       <div class="admin-flag-header">
         <strong>${escapeHtml(meta.label)}</strong>
         <code class="admin-flag-key">${escapeHtml(f.key)}</code>
-        <label class="admin-flag-toggle">
-          <input type="checkbox" ${f.enabled ? 'checked' : ''} />
-          <span>${f.enabled ? 'Ativo' : 'Desligado'}</span>
-        </label>
+        <div class="admin-flag-toggle">
+          <span class="admin-flag-state">${f.enabled ? 'Ativo' : 'Desligado'}</span>
+          <label class="switch">
+            <input type="checkbox" ${f.enabled ? 'checked' : ''} />
+            <span class="switch-slider"></span>
+          </label>
+        </div>
       </div>
       ${meta.desc ? `<p class="muted-small">${escapeHtml(meta.desc)}</p>` : ''}
       <textarea class="admin-flag-message" placeholder="Mensagem de manutenção (opcional, máx 500 chars)" maxlength="500">${escapeHtml(f.message || '')}</textarea>
@@ -3052,9 +3055,12 @@ function renderExtraBoardsList() {
     const accent = /^#[0-9a-f]{6}$/i.test(b.color || '') ? b.color : '#6b7280';
     row.style.setProperty('--eb-color', accent);
     row.innerHTML = `
-      <input type="checkbox" id="${id}" data-board-id="${b.id}" />
       <span class="eb-color"></span>
       <span class="eb-title">${escapeHtml(b.title)}</span>
+      <label class="switch">
+        <input type="checkbox" id="${id}" data-board-id="${b.id}" />
+        <span class="switch-slider"></span>
+      </label>
     `;
     const cb = row.querySelector('input[type="checkbox"]');
     cb.checked = inviteExtraBoards.has(b.id);

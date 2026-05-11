@@ -215,10 +215,22 @@
           <div class="column-toggle">
             <button class="btn btn-ghost" id="columnsBtn">👁️ Colunas</button>
             <div class="column-toggle-menu hidden" id="columnsMenu">
-              <label><input type="checkbox" data-col="priority" checked /> Prioridade</label>
-              <label><input type="checkbox" data-col="assignee" checked /> Responsável</label>
-              <label><input type="checkbox" data-col="due_date" checked /> Vencimento</label>
-              <label><input type="checkbox" data-col="description" /> Descrição</label>
+              <label>
+                <span>Prioridade</span>
+                <span class="switch"><input type="checkbox" data-col="priority" checked /><span class="switch-slider"></span></span>
+              </label>
+              <label>
+                <span>Responsável</span>
+                <span class="switch"><input type="checkbox" data-col="assignee" checked /><span class="switch-slider"></span></span>
+              </label>
+              <label>
+                <span>Vencimento</span>
+                <span class="switch"><input type="checkbox" data-col="due_date" checked /><span class="switch-slider"></span></span>
+              </label>
+              <label>
+                <span>Descrição</span>
+                <span class="switch"><input type="checkbox" data-col="description" /><span class="switch-slider"></span></span>
+              </label>
             </div>
           </div>
         </div>
