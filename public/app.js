@@ -498,10 +498,13 @@ function renderAdminUsers(users, filter = '') {
           ? `<button class="btn btn-ghost" data-action="reactivate">Reativar</button>`
           : `<button class="btn btn-ghost" data-action="suspend">Suspender</button>`)
       : '';
+    const resetBtn = canMutate
+      ? `<button class="btn btn-ghost" data-action="reset-password" title="Gera uma senha temporária pro usuário">🔑 Senha</button>`
+      : '';
     const deleteBtn = canMutate
       ? `<button class="btn btn-ghost btn-danger-ghost" data-action="delete">Excluir</button>`
       : '';
-    const action = suspendBtn + deleteBtn;
+    const action = resetBtn + suspendBtn + deleteBtn;
 
     row.innerHTML = `
       <div class="admin-user-avatar">${avatarImg(u.email, 36, u.name)}</div>
@@ -516,8 +519,9 @@ function renderAdminUsers(users, filter = '') {
     `;
     row.querySelectorAll('button[data-action]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        if (btn.dataset.action === 'delete') openDeleteUserModal(u);
-        else                                  toggleSuspend(u, btn.dataset.action);
+        if (btn.dataset.action === 'delete')              openDeleteUserModal(u);
+        else if (btn.dataset.action === 'reset-password') resetUserPassword(u);
+        else                                              toggleSuspend(u, btn.dataset.action);
       });
     });
     wrap.appendChild(row);
@@ -587,6 +591,80 @@ async function confirmDeleteUser() {
     btn.disabled = false;
     btn.textContent = 'Excluir permanentemente';
   }
+}
+
+async function changePassword(e) {
+  e.preventDefault();
+  const current = $('#changePwCurrent').value;
+  const next = $('#changePwNew').value;
+  const confirmTxt = $('#changePwConfirm').value;
+  const status = $('#changePwStatus');
+  const btn = $('#changePwSubmitBtn');
+  status.classList.remove('hidden', 'success', 'error');
+  if (next.length < 8) {
+    status.className = 'change-password-status error';
+    status.textContent = 'A nova senha precisa ter ao menos 8 caracteres.';
+    status.classList.remove('hidden');
+    return;
+  }
+  if (next !== confirmTxt) {
+    status.className = 'change-password-status error';
+    status.textContent = 'A confirmação da nova senha não bate.';
+    status.classList.remove('hidden');
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  try {
+    const res = await request('/api/me/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: current, new_password: next }),
+    });
+    if (res.ok) {
+      status.className = 'change-password-status success';
+      status.textContent = '✓ Senha trocada. Outras sessões deste usuário foram encerradas.';
+      status.classList.remove('hidden');
+      $('#changePwCurrent').value = '';
+      $('#changePwNew').value = '';
+      $('#changePwConfirm').value = '';
+    } else {
+      const data = await res.json().catch(() => ({}));
+      status.className = 'change-password-status error';
+      status.textContent = data.error || 'Erro ao trocar senha.';
+      status.classList.remove('hidden');
+    }
+  } catch {
+    status.className = 'change-password-status error';
+    status.textContent = 'Erro de rede. Tenta de novo.';
+    status.classList.remove('hidden');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Trocar senha';
+  }
+}
+
+async function resetUserPassword(user) {
+  const confirmMsg = `Gerar uma senha temporária pra ${user.name || user.email}?\n\nA senha atual será invalidada e todas as sessões deste usuário serão encerradas. Você precisará repassar a nova senha pessoalmente (WhatsApp/Telegram).`;
+  if (!confirm(confirmMsg)) return;
+  try {
+    const res = await api.post(`/api/admin/users/${user.id}/reset-password`, {});
+    // Show the plaintext password — ONLY chance. After dismissing this modal it's gone.
+    showResetPasswordResult(res);
+  } catch {
+    alert('Falha ao resetar senha. Tenta de novo.');
+  }
+}
+
+function showResetPasswordResult({ email, name, password }) {
+  const modal = $('#resetPasswordModal');
+  $('#resetPasswordTarget').textContent = `${name || '(sem nome)'} — ${email}`;
+  $('#resetPasswordValue').textContent = password;
+  $('#resetPasswordCopyBtn').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(password);
+      $('#resetPasswordCopyBtn').textContent = '✓ Copiado!';
+      setTimeout(() => { $('#resetPasswordCopyBtn').textContent = '📋 Copiar'; }, 1500);
+    } catch { alert('Não consegui copiar — selecione e copie manualmente.'); }
+  };
+  modal.classList.remove('hidden');
 }
 
 async function toggleSuspend(user, action) {
@@ -4055,6 +4133,8 @@ function setupEventListeners() {
   $('#cardRecurrenceToggle')?.addEventListener('change', (e) => {
     $('#cardRecurrenceMonthsRow').classList.toggle('hidden', !e.target.checked);
   });
+
+  $('#changePasswordForm')?.addEventListener('submit', changePassword);
   $('#cardAmountInput')?.addEventListener('input', () => {
     const btn = $('#cardMarkPaidBtn');
     if (!btn || btn.classList.contains('hidden')) return;

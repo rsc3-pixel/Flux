@@ -353,6 +353,76 @@ app.delete('/api/admin/users/:id', auth.requireOwner, (req, res) => {
   res.json({ id: target.id, email: target.email, deleted: true });
 });
 
+// Curated list of short, easy-to-type Portuguese words for generating temporary
+// passwords. Pattern: word-word-NN (two random words + 2 digits). Designed to
+// be dictate-able over WhatsApp without confusion ("aluvial" out, "agua" in).
+const RESET_PW_WORDS = [
+  'azul','rosa','luz','agua','fogo','sol','lua','mar','rio','vento',
+  'casa','flor','folha','ouro','prata','verde','rubi','jade','manga','uva',
+  'mel','sal','chuva','neve','onda','pedra','nuvem','gelo','areia','palha',
+];
+function generateMemorablePassword() {
+  const a = RESET_PW_WORDS[Math.floor(Math.random() * RESET_PW_WORDS.length)];
+  const b = RESET_PW_WORDS[Math.floor(Math.random() * RESET_PW_WORDS.length)];
+  const n = 10 + Math.floor(Math.random() * 90); // 10..99, no leading-zero ambiguity
+  return `${a}-${b}-${n}`;
+}
+
+// Owner resets a user's password to a memorable temporary value. Returns the
+// plaintext ONCE so the owner can copy + relay via WhatsApp; never stored
+// plaintext anywhere else. Invalidates the target's existing sessions so they
+// get bounced on next request and must log in with the new password.
+app.post('/api/admin/users/:id/reset-password', auth.requireOwner, (req, res) => {
+  const targetId = parseInt(req.params.id);
+  if (!Number.isInteger(targetId) || targetId <= 0)
+    return res.status(400).json({ error: 'ID inválido' });
+  if (targetId === req.user.id)
+    return res.status(400).json({ error: 'Para trocar sua própria senha use Configurações' });
+
+  const target = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(targetId);
+  if (!target) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+  const newPassword = generateMemorablePassword();
+  const hash = auth.hashPassword(newPassword);
+  db.transaction(() => {
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, targetId);
+    // Force re-login on all devices the target is currently logged in on
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
+  })();
+  res.json({ email: target.email, name: target.name, password: newPassword });
+});
+
+// User changes their own password. Requires the current password to confirm
+// identity. Logs out OTHER sessions (other devices) but keeps the current
+// session alive so the user doesn't get bounced on the device they're on.
+app.post('/api/me/change-password', (req, res) => {
+  const { current_password, new_password } = req.body || {};
+  if (typeof current_password !== 'string' || !current_password)
+    return res.status(400).json({ error: 'Informe a senha atual' });
+  if (typeof new_password !== 'string' || new_password.length < 8)
+    return res.status(400).json({ error: 'A nova senha precisa ter ao menos 8 caracteres' });
+  if (current_password === new_password)
+    return res.status(400).json({ error: 'A nova senha precisa ser diferente da atual' });
+
+  const me = db.prepare('SELECT id, password_hash FROM users WHERE id = ?').get(req.user.id);
+  if (!me) return res.status(404).json({ error: 'Usuário não encontrado' });
+  if (!auth.verifyPassword(current_password, me.password_hash))
+    return res.status(400).json({ error: 'Senha atual incorreta' });
+
+  const currentToken = req.cookies?.mt_session;
+  db.transaction(() => {
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?')
+      .run(auth.hashPassword(new_password), me.id);
+    // Kill all OTHER sessions; keep the current one so the user stays logged in here
+    if (currentToken) {
+      db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(me.id, currentToken);
+    } else {
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(me.id);
+    }
+  })();
+  res.json({ ok: true });
+});
+
 // Toggle a flag's enabled state and/or its maintenance message. Body fields
 // are optional — pass only what you want to change.
 app.patch('/api/admin/flags/:key', auth.requireOwner, (req, res) => {

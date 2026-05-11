@@ -12,6 +12,14 @@
 
 const releases = [
   {
+    version: '1.9.1',
+    date: '2026-05-11',
+    notes: [
+      '🔐 Agora dá pra trocar a senha em Configurações — útil pra atualizar de tempos em tempos ou logo após receber uma senha temporária',
+      '🔑 Esqueceu a senha? Manda mensagem pelo botão "Contato" — o owner consegue gerar uma senha temporária pra você no painel de admin',
+    ],
+  },
+  {
     version: '1.8.10',
     date: '2026-05-11',
     notes: [
