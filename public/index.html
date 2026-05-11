@@ -95,6 +95,7 @@
       <div class="sidebar-section sidebar-workspace-nav">
         <div class="sidebar-section-title">Workspace</div>
         <nav class="ws-nav">
+          <button class="ws-nav-item" data-view="today"     data-icon="sun"         data-anim="pop">Hoje</button>
           <button class="ws-nav-item" data-view="activity"  data-icon="bell"        data-anim="wiggle">Atividade</button>
           <button class="ws-nav-item" data-view="analytics" data-icon="bar-chart-3" data-anim="bounce">Analytics</button>
           <!-- Finance tab — JS reveals only when feature flag 'financial' is on -->
@@ -283,6 +284,17 @@
           <div id="overdueList" class="overdue-list"></div>
         </div>
       </div>
+    </section>
+
+    <!-- HOJE (workspace-level) — consolidated view of today + next 7 days across all boards -->
+    <section id="todayView" class="board-view hidden">
+      <div class="board-header">
+        <h2 id="todayTitle">Hoje</h2>
+        <div class="board-header-actions">
+          <button class="btn btn-ghost" id="refreshTodayBtn" data-icon="activity" data-anim="spin">Atualizar</button>
+        </div>
+      </div>
+      <div class="today-content" id="todayContent"></div>
     </section>
 
     <!-- ACTIVITY (workspace-level) -->

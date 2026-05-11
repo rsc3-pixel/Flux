@@ -12,6 +12,14 @@
 
 const releases = [
   {
+    version: '1.8.0',
+    date: '2026-05-10',
+    notes: [
+      '☀️ Nova aba "Hoje" na sidebar — abre o dia inteiro e os próximos 7 dias num só lugar, juntando cards de todos os seus quadros. Pra abrir o app de manhã e bater o olho no que tem pra fazer sem precisar pular entre quadros',
+      '📅 Cards de período (com data de início + fim) aparecem em "Hoje" enquanto estiverem em andamento — útil pra férias, plantões longos e qualquer compromisso que dure mais de um dia',
+    ],
+  },
+  {
     version: '1.7.0',
     date: '2026-05-10',
     notes: [

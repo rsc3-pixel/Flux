@@ -363,6 +363,96 @@ body {
 }
 .activity-day-sep:first-child { border-top: none; padding-top: 8px; }
 
+/* ============ TODAY VIEW ============ */
+.today-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 900px;
+}
+.today-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+}
+.today-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 12px;
+}
+.today-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+.today-day-sep {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  letter-spacing: 0.6px;
+  padding: 14px 4px 6px;
+}
+.today-day-group:first-child .today-day-sep { padding-top: 4px; }
+.today-item {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--color-surface-2);
+  border-left: 3px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.05s;
+  margin-bottom: 8px;
+}
+.today-item:hover { background: var(--color-surface-hover); }
+.today-item:active { transform: scale(0.99); }
+.today-item:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.today-item.priority-alta   { border-left-color: #EF4444; }
+.today-item.priority-media  { border-left-color: #F59E0B; }
+.today-item.priority-baixa  { border-left-color: #10B981; }
+.today-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 4px 0 6px;
+  line-height: 1.35;
+}
+.today-item-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.today-item-board {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.today-board-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.today-item-date { color: var(--color-text-secondary); }
+.today-assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.today-assignee img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
 /* ============ MAIN AREA ============ */
 .main-area {
   display: flex;

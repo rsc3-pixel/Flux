@@ -1106,7 +1106,7 @@ function applyRoleVisibility() {
 }
 
 // Workspace-level views don't operate on a board
-const WORKSPACE_VIEWS = new Set(['settings', 'activity', 'analytics', 'admin', 'financial']);
+const WORKSPACE_VIEWS = new Set(['settings', 'activity', 'analytics', 'admin', 'financial', 'today']);
 
 function switchView(viewName) {
   // Remember the last per-board view, so workspace-level views (Settings,
@@ -1122,7 +1122,7 @@ function switchView(viewName) {
     kanban: '#kanbanView', table: '#tableView', cards: '#cardsView',
     calendar: '#calendarView', gantt: '#ganttView', dashboard: '#dashboardView',
     settings: '#settingsView', activity: '#activityView', analytics: '#analyticsView',
-    admin: '#adminView', financial: '#financialView',
+    admin: '#adminView', financial: '#financialView', today: '#todayView',
   };
   $(map[viewName])?.classList.remove('hidden');
   // Hide per-board view tabs when in a workspace-level view
@@ -1138,6 +1138,7 @@ function renderCurrentView() {
   if (state.view === 'analytics') return renderWorkspaceAnalytics();
   if (state.view === 'admin')     return renderAdmin();
   if (state.view === 'financial') return renderFinancial();
+  if (state.view === 'today')     return renderToday();
   if (!state.currentBoard) return;
   if (state.view === 'kanban')    renderKanban();
   if (state.view === 'table')     renderTable();
@@ -2007,6 +2008,153 @@ function daysBetween(a, b) {
   return Math.round((b - a) / 86400000);
 }
 
+// ============ WORKSPACE: HOJE ============
+// Aggregates cards from all boards the user can see that touch [today, today+7].
+// "Hoje" bucket = anything covering today; "Próximos 7 dias" = the rest, by day.
+async function renderToday() {
+  const container = $('#todayContent');
+  container.innerHTML = '<div class="today-empty">Carregando...</div>';
+  let data;
+  try { data = await api.get('/api/today'); }
+  catch {
+    container.innerHTML = '<div class="today-empty">Erro ao carregar.</div>';
+    return;
+  }
+  const { today, cards } = data;
+
+  // Update header with the date in pt-BR (e.g., "Hoje · seg, 12 de maio")
+  const todayDate = new Date(today + 'T00:00:00');
+  const weekdays = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+  const months   = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  $('#todayTitle').textContent = `Hoje · ${weekdays[todayDate.getDay()]}, ${todayDate.getDate()} de ${months[todayDate.getMonth()]}`;
+
+  // Bucket: a card "covers today" if any of its dates equal today, or its
+  // [start, due] range includes today.
+  const todayCards = [];
+  const futureByDay = {};
+  for (const c of cards) {
+    const due = c.due_date;
+    const start = c.start_date;
+    const coversToday =
+      due === today ||
+      start === today ||
+      (start && due && start <= today && due >= today);
+    if (coversToday) { todayCards.push(c); continue; }
+    // Pick the primary upcoming date — earliest of (start, due) that's >= today
+    const candidates = [start, due].filter(d => d && d > today).sort();
+    const dayKey = candidates[0];
+    if (!dayKey) continue; // nothing useful (shouldn't happen given the SQL)
+    (futureByDay[dayKey] ||= []).push(c);
+  }
+
+  container.innerHTML = '';
+
+  // --- HOJE section ---
+  const todaySection = document.createElement('div');
+  todaySection.className = 'today-section';
+  const todayHeader = document.createElement('h3');
+  todayHeader.className = 'today-section-title';
+  todayHeader.textContent = `Hoje (${todayCards.length})`;
+  todaySection.appendChild(todayHeader);
+  if (todayCards.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'today-empty';
+    empty.textContent = 'Nada por hoje. Aproveita 🙂';
+    todaySection.appendChild(empty);
+  } else {
+    for (const c of todayCards) todaySection.appendChild(renderTodayItem(c, today));
+  }
+  container.appendChild(todaySection);
+
+  // --- PRÓXIMOS 7 DIAS section ---
+  const futureSection = document.createElement('div');
+  futureSection.className = 'today-section';
+  const futureHeader = document.createElement('h3');
+  futureHeader.className = 'today-section-title';
+  const totalFuture = Object.values(futureByDay).reduce((sum, arr) => sum + arr.length, 0);
+  futureHeader.textContent = `Próximos 7 dias (${totalFuture})`;
+  futureSection.appendChild(futureHeader);
+  const sortedDays = Object.keys(futureByDay).sort();
+  if (sortedDays.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'today-empty';
+    empty.textContent = 'Nada nos próximos 7 dias.';
+    futureSection.appendChild(empty);
+  } else {
+    for (const dayKey of sortedDays) {
+      const dayGroup = document.createElement('div');
+      dayGroup.className = 'today-day-group';
+      const daySep = document.createElement('div');
+      daySep.className = 'today-day-sep';
+      daySep.textContent = humanFutureDay(dayKey, today);
+      dayGroup.appendChild(daySep);
+      for (const c of futureByDay[dayKey]) dayGroup.appendChild(renderTodayItem(c, today));
+      futureSection.appendChild(dayGroup);
+    }
+  }
+  container.appendChild(futureSection);
+
+  injectIcons(container);
+}
+
+// Renders a "Quarta, 14 de maio" / "Amanhã" / "Segunda" depending on proximity
+function humanFutureDay(dayKey, todayKey) {
+  const d = new Date(dayKey + 'T00:00:00');
+  const t = new Date(todayKey + 'T00:00:00');
+  const diff = Math.round((d - t) / 86400000);
+  const weekdaysFull = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  const months   = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  if (diff === 1) return `Amanhã · ${weekdaysFull[d.getDay()].toLowerCase()}, ${d.getDate()} de ${months[d.getMonth()]}`;
+  if (diff > 1 && diff < 7) return `${weekdaysFull[d.getDay()]}, ${d.getDate()} de ${months[d.getMonth()]}`;
+  return `${d.getDate()} de ${months[d.getMonth()]}`;
+}
+
+// Single card item in the Today/Future list. Reuses card category pill.
+function renderTodayItem(card, todayKey) {
+  const el = document.createElement('div');
+  el.className = `today-item priority-${card.priority || 'media'}`;
+  el.tabIndex = 0;
+  el.addEventListener('click', () => openCardModal(card));
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter') openCardModal(card); });
+
+  const pill = cardCategoryPill(card);
+  const pillHtml = pill
+    ? `<div class="card-category" style="--cat-color:${pill.color};--cat-bg:${pill.color}1A">${escapeHtml(pill.label)}</div>`
+    : '';
+
+  // Date hint: range → "23/05 → 02/06"; single → "vence 14/05"; running → "até 02/06"
+  const fmtBR = (d) => { const x = new Date(d + 'T00:00:00'); return `${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}`; };
+  let dateHint = '';
+  if (card.start_date && card.due_date) {
+    if (card.start_date <= todayKey && card.due_date >= todayKey) {
+      dateHint = card.due_date === todayKey ? `termina hoje` : `vai até ${fmtBR(card.due_date)}`;
+    } else {
+      dateHint = `${fmtBR(card.start_date)} → ${fmtBR(card.due_date)}`;
+    }
+  } else if (card.due_date) {
+    dateHint = card.due_date === todayKey ? 'vence hoje' : `vence ${fmtBR(card.due_date)}`;
+  } else if (card.start_date) {
+    dateHint = card.start_date === todayKey ? 'começa hoje' : `começa ${fmtBR(card.start_date)}`;
+  }
+
+  const assigneeHtml = card.assignee
+    ? `<span class="today-assignee">${avatarImg(card.assignee, 20, card.assignee)}${escapeHtml(card.assignee)}</span>`
+    : '';
+
+  el.innerHTML = `
+    ${pillHtml}
+    <div class="today-item-title">${escapeHtml(card.title)}</div>
+    <div class="today-item-meta">
+      <span class="today-item-board" title="${escapeHtml(card.board_title)} · ${escapeHtml(card.list_title)}">
+        <span class="today-board-dot" style="background:${card.board_color || '#999'}"></span>${escapeHtml(card.board_title)}
+      </span>
+      ${dateHint ? `<span class="today-item-date">${dateHint}</span>` : ''}
+      ${assigneeHtml}
+    </div>
+  `;
+  return el;
+}
+
 // ============ WORKSPACE: ACTIVITY ============
 async function renderActivity() {
   const container = $('#activityTimeline');
@@ -2479,7 +2627,7 @@ async function saveCard(e) {
   if (id) await api.put(`/api/cards/${id}`, payload);
   else    await api.post('/api/cards', payload);
   closeAllModals();
-  await loadBoard(state.currentBoardId);
+  await refreshAfterCardChange();
 }
 
 async function deleteCard() {
@@ -2488,7 +2636,16 @@ async function deleteCard() {
   if (!confirm('Excluir este card?')) return;
   await api.delete(`/api/cards/${id}`);
   closeAllModals();
-  await loadBoard(state.currentBoardId);
+  await refreshAfterCardChange();
+}
+
+// Reload the right view after a card mutation. From Today view, the card may
+// belong to a different board than state.currentBoardId — calling loadBoard
+// here would also redirect away from Today (loadBoard auto-jumps off
+// workspace-level views), so refresh Today directly instead.
+async function refreshAfterCardChange() {
+  if (state.view === 'today') return renderToday();
+  if (state.currentBoardId)   return loadBoard(state.currentBoardId);
 }
 
 // ============ MODAL: LISTA (dedicated, Samsung Notes-style) ============
@@ -3734,6 +3891,7 @@ function setupEventListeners() {
 
   // Refresh button on Activity view
   $('#refreshActivityBtn')?.addEventListener('click', renderActivity);
+  $('#refreshTodayBtn')?.addEventListener('click', renderToday);
 
   // Topbar gear icon — toggles Settings (clicking again returns to your board)
   $('#settingsBtn').addEventListener('click', () => {

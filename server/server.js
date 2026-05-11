@@ -1297,6 +1297,57 @@ app.get('/api/workspaces/me', (req, res) => {
   res.json({ ...ws, board_count: boardCount });
 });
 
+// "Hoje" view — cards from ALL boards the user owns/can-view that touch the
+// window [today, today+7]. A card "touches" the window if any of its dates fall
+// inside it, OR if its [start, due] range overlaps it. Client buckets them as
+// "Hoje" (anything covering today) vs "Próximos 7 dias" (the rest).
+app.get('/api/today', (req, res) => {
+  const today = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const todayKey = fmt(today);
+  const end = new Date(today); end.setDate(end.getDate() + 7);
+  const endKey = fmt(end);
+
+  const cards = db.prepare(`
+    SELECT
+      c.id, c.list_id, c.title, c.description, c.priority,
+      c.due_date, c.start_date, c.assignee, c.category, c.position,
+      c.amount_cents, c.finance_category_id, c.paid_at,
+      c.custom_category_label, c.custom_category_color,
+      l.title AS list_title, l.board_id,
+      b.title AS board_title, b.color AS board_color
+    FROM cards c
+    JOIN lists l  ON l.id = c.list_id
+    JOIN boards b ON b.id = l.board_id
+    LEFT JOIN board_members m ON m.board_id = b.id AND m.user_id = ?
+    WHERE (b.owner_id = ? OR m.user_id IS NOT NULL)
+      AND (
+        -- Range card overlapping the window
+        (c.start_date IS NOT NULL AND c.due_date IS NOT NULL
+         AND c.start_date <= ? AND c.due_date >= ?)
+        OR
+        -- Single-date by due_date in window
+        (c.due_date IS NOT NULL AND c.due_date >= ? AND c.due_date <= ?)
+        OR
+        -- Single-date by start_date in window (card with only start_date)
+        (c.start_date IS NOT NULL AND c.due_date IS NULL
+         AND c.start_date >= ? AND c.start_date <= ?)
+      )
+    ORDER BY COALESCE(c.due_date, c.start_date), c.position
+  `).all(req.user.id, req.user.id,
+         endKey, todayKey,        // range overlap
+         todayKey, endKey,        // due_date in window
+         todayKey, endKey);       // start_date in window (no due)
+
+  // Enrich each card with checklist items so the LISTA preview works the same
+  // here as on the board view.
+  const checklistStmt = db.prepare('SELECT * FROM checklist_items WHERE card_id = ? ORDER BY position, id');
+  for (const c of cards) c.checklist_items = checklistStmt.all(c.id);
+
+  res.json({ today: todayKey, end: endKey, cards });
+});
+
 // Activity feed for the current workspace, filtered to boards the user can see
 app.get('/api/workspaces/:id/activity', (req, res) => {
   const wsId = parseInt(req.params.id);
