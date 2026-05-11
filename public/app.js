@@ -4078,7 +4078,11 @@ function openSidebar()  { $('#sidebar').classList.add('open'); $('#sidebarOverla
 function closeSidebar() { $('#sidebar').classList.remove('open'); $('#sidebarOverlay').classList.remove('show'); }
 
 function fabAction() {
-  // FAB opens a new card on the first list of the current board
+  // FAB is context-aware: in Finanças it creates a new transaction; otherwise
+  // a new card on the current board's first list. Without that, mobile users
+  // in Finanças hit the FAB expecting "Nova transação" but get the kanban
+  // "Novo Card" modal (no Despesa/Receita toggle) by mistake.
+  if (state.view === 'financial') return openFinanceTxModal(null);
   if (!state.currentBoard) return openWizard();
   const firstList = state.currentBoard.lists[0];
   if (firstList) openCardModal(null, firstList.id);
