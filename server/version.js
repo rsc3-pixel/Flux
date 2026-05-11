@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.8.10',
+    date: '2026-05-11',
+    notes: [
+      '📱 Mobile: agora dá pra rolar a lista de cards normalmente — antes qualquer toque era interpretado como início de arrastar. Pra arrastar um card pra outra coluna, agora segure por meio segundo antes de mover',
+    ],
+  },
+  {
     version: '1.8.7',
     date: '2026-05-11',
     notes: [

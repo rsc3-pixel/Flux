@@ -1,6 +1,6 @@
 {
   "name": "flux",
-  "version": "1.8.9",
+  "version": "1.8.10",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",

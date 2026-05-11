@@ -1328,10 +1328,16 @@ function renderList(list) {
 
   el.appendChild(cardsContainer);
 
-  // Card-level drag: works on touch + mouse, allows moving between lists
+  // Card-level drag: works on touch + mouse, allows moving between lists.
+  // delay/delayOnTouchOnly: on touch devices the user must press-and-hold for
+  // 200ms before drag starts — quick taps/swipes then pass through to the list
+  // for scrolling. Without this, every touch on a card was interpreted as the
+  // start of a drag, making it impossible to scroll long lists on mobile.
   Sortable.create(cardsContainer, {
     group: 'cards',         // same group across all lists → cards move freely between
     animation: 180,
+    delay: 200,
+    delayOnTouchOnly: true,
     ghostClass: 'card-ghost',
     chosenClass: 'card-chosen',
     dragClass: 'card-drag',
@@ -3597,8 +3603,12 @@ const TOUR_STEPS = [
   },
   {
     selector: '#viewTabs',
+    // Mobile uses bottom-nav for primary view switching — #viewTabs is
+    // display:none on small screens. .bottom-nav has Kanban/Calendar/Dashboard.
+    mobileSelector: '.bottom-nav',
     title: '🔀 Trocar de visão',
     text: 'Cada quadro tem várias visões. Kanban é a clássica (colunas com cartões); tem também Tabela, Calendário, Cronograma e mais. Passe o mouse nas abas pra ver o que cada uma faz.',
+    mobileText: 'Aqui embaixo você troca entre as principais visões do quadro: Kanban (clássica em colunas), Calendário, Dashboard e Configurações.',
     placement: 'bottom',
     mobileDrawer: 'closed',
     // The view tabs are hidden on workspace-level views (help, today, settings…)
@@ -3667,7 +3677,10 @@ function showTourStep() {
       }
     }
   }
-  let target = document.querySelector(step.selector);
+  // Pick selector + text: prefer mobile-specific ones when on touch viewport
+  const onMobile = isMobileTour();
+  const selector = (onMobile && step.mobileSelector) ? step.mobileSelector : step.selector;
+  let target = document.querySelector(selector);
   if (!target && step.fallback) target = document.querySelector(step.fallback);
   // Skip if target missing OR present-but-invisible (display:none → zero rect)
   const rect = target ? target.getBoundingClientRect() : null;
@@ -3677,13 +3690,13 @@ function showTourStep() {
   }
   // Scroll into view (mobile: top so popover at bottom doesn't overlap; desktop: center)
   target.scrollIntoView({
-    block: isMobileTour() ? 'start' : 'center',
+    block: onMobile ? 'start' : 'center',
     inline: 'center',
     behavior: 'instant',
   });
 
   $('#tourTitle').textContent = step.title;
-  $('#tourText').textContent = step.text;
+  $('#tourText').textContent = (onMobile && step.mobileText) ? step.mobileText : step.text;
   $('#tourProgress').textContent = `${_tour.idx + 1} / ${TOUR_STEPS.length}`;
   $('#tourPrevBtn').classList.toggle('hidden', _tour.idx === 0);
   $('#tourNextBtn').textContent = _tour.idx === TOUR_STEPS.length - 1 ? 'Concluir' : 'Próximo';
@@ -3695,7 +3708,9 @@ function showTourStep() {
 function positionTourStep() {
   const step = TOUR_STEPS[_tour.idx];
   if (!step) return;
-  let target = document.querySelector(step.selector);
+  const onMobile = isMobileTour();
+  const selector = (onMobile && step.mobileSelector) ? step.mobileSelector : step.selector;
+  let target = document.querySelector(selector);
   if (!target && step.fallback) target = document.querySelector(step.fallback);
   if (!target) return;
   const rect = target.getBoundingClientRect();
@@ -3714,7 +3729,7 @@ function positionTourStep() {
   // MOBILE: bottom-sheet placement (full-width pinned to top or bottom of
   // viewport depending on where the highlight sits). Predictable, never
   // overlaps the highlight, no clamping math.
-  if (isMobileTour()) {
+  if (onMobile) {
     popover.classList.add('tour-popover-mobile');
     const highlightCenter = rect.top + rect.height / 2;
     const placeAtBottom = highlightCenter < vh / 2;
