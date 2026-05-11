@@ -75,6 +75,7 @@ const ICONS = {
   'check-square':      '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
   'arrow-up':          '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
   'arrow-down':        '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+  'help-circle':       '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" x2="12.01" y1="17" y2="17"/>',
 };
 
 function svgIcon(name) {
@@ -1106,7 +1107,7 @@ function applyRoleVisibility() {
 }
 
 // Workspace-level views don't operate on a board
-const WORKSPACE_VIEWS = new Set(['settings', 'activity', 'analytics', 'admin', 'financial', 'today']);
+const WORKSPACE_VIEWS = new Set(['settings', 'activity', 'analytics', 'admin', 'financial', 'today', 'help']);
 
 function switchView(viewName) {
   // Remember the last per-board view, so workspace-level views (Settings,
@@ -1123,6 +1124,7 @@ function switchView(viewName) {
     calendar: '#calendarView', gantt: '#ganttView', dashboard: '#dashboardView',
     settings: '#settingsView', activity: '#activityView', analytics: '#analyticsView',
     admin: '#adminView', financial: '#financialView', today: '#todayView',
+    help: '#helpView',
   };
   $(map[viewName])?.classList.remove('hidden');
   // Hide per-board view tabs when in a workspace-level view
@@ -1139,6 +1141,7 @@ function renderCurrentView() {
   if (state.view === 'admin')     return renderAdmin();
   if (state.view === 'financial') return renderFinancial();
   if (state.view === 'today')     return renderToday();
+  if (state.view === 'help')      return; // help page is static HTML, no render needed
   if (!state.currentBoard) return;
   if (state.view === 'kanban')    renderKanban();
   if (state.view === 'table')     renderTable();

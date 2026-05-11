@@ -102,7 +102,8 @@
           <button class="ws-nav-item hidden" id="financialNavBtn" data-view="financial" data-icon="dollar-sign" data-anim="pop">Finanças</button>
           <!-- Admin tab — JS reveals only when state.user.is_owner is true -->
           <button class="ws-nav-item hidden" id="adminNavBtn" data-view="admin" data-icon="shield" data-anim="pop">Admin</button>
-          <button class="ws-nav-item" id="reportBugBtn"     data-icon="bug"         data-anim="shake">Reportar bug</button>
+          <button class="ws-nav-item" data-view="help"      data-icon="help-circle" data-anim="pop"   title="Guia rápido em português pra aprender a usar o Flux">Como usar</button>
+          <button class="ws-nav-item" id="reportBugBtn"     data-icon="bug"         data-anim="shake" title="Reporta um problema ou sugestão diretamente pro time">Reportar bug</button>
         </nav>
         <div class="sidebar-version" id="sidebarVersion"></div>
       </div>
@@ -295,6 +296,144 @@
         </div>
       </div>
       <div class="today-content" id="todayContent"></div>
+    </section>
+
+    <!-- AJUDA (workspace-level) — static guide for new users -->
+    <section id="helpView" class="board-view hidden">
+      <div class="help-page">
+        <div class="help-hero">
+          <h2>Como usar o Flux</h2>
+          <p>Um guia rápido pra você começar. Tem dúvida em alguma parte específica? Clica no item do índice pra pular pra lá.</p>
+          <nav class="help-toc">
+            <a href="#help-conceitos">🧭 Conceitos básicos</a>
+            <a href="#help-primeiro-quadro">🟦 Criando seu primeiro quadro</a>
+            <a href="#help-tarefas">✅ Adicionando tarefas</a>
+            <a href="#help-arrastar">↔️ Arrastando e organizando</a>
+            <a href="#help-categorias">🎨 Categorias e cores</a>
+            <a href="#help-hoje">☀️ A tela "Hoje"</a>
+            <a href="#help-calendario">📅 Calendário e prazos</a>
+            <a href="#help-convidar">👥 Convidar pessoas</a>
+            <a href="#help-dicas">💡 Dicas rápidas</a>
+          </nav>
+        </div>
+
+        <section class="help-section" id="help-conceitos">
+          <h3>🧭 Conceitos básicos</h3>
+          <p>O Flux tem três coisas só. Se você entender essas três, sabe usar tudo:</p>
+          <div class="help-cards">
+            <div class="help-card">
+              <div class="help-card-emoji">📋</div>
+              <h4>Quadro</h4>
+              <p>É como um projeto ou área da sua vida. Você pode ter um quadro pra <strong>Trabalho</strong>, outro pra <strong>Casa</strong>, outro pra <strong>Escala do plantão</strong>. Aparecem na barra lateral.</p>
+            </div>
+            <div class="help-card">
+              <div class="help-card-emoji">📑</div>
+              <h4>Lista (ou coluna)</h4>
+              <p>Cada coluna do quadro é uma <strong>etapa</strong>. Exemplo clássico: <strong>A fazer</strong> → <strong>Fazendo</strong> → <strong>Pronto</strong>. Você cria as colunas que fizer sentido pra você.</p>
+            </div>
+            <div class="help-card">
+              <div class="help-card-emoji">🏷️</div>
+              <h4>Tarefa (ou card)</h4>
+              <p>Cada coisa que precisa ser feita vira um cartão dentro de uma coluna. Tem título, descrição, prazo, responsável, etc. Você arrasta o cartão pra outra coluna conforme o trabalho avança.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="help-section" id="help-primeiro-quadro">
+          <h3>🟦 Criando seu primeiro quadro</h3>
+          <ol class="help-steps">
+            <li>Na barra lateral à esquerda, clique no botão azul <strong>Novo Quadro</strong>.</li>
+            <li>Dê um nome (ex: <em>Trabalho</em>, <em>Estudos</em>, <em>Plantão maio</em>) e escolha uma cor.</li>
+            <li>Pronto, o quadro abre vazio. Agora você cria as colunas — clique em <strong>+ Adicionar lista</strong> à direita.</li>
+            <li>Sugestão pra começar: crie três colunas — <strong>A fazer</strong>, <strong>Fazendo</strong>, <strong>Pronto</strong>. Você pode mudar depois.</li>
+          </ol>
+        </section>
+
+        <section class="help-section" id="help-tarefas">
+          <h3>✅ Adicionando tarefas</h3>
+          <ol class="help-steps">
+            <li>No quadro, clique em <strong>+ Adicionar card</strong> no fim de uma coluna.</li>
+            <li>Escreva o título da tarefa (ex: <em>"Comprar pão"</em>, <em>"Plantão noturno"</em>) e tecle <strong>Enter</strong>.</li>
+            <li>Quer mais detalhes? Clique no cartão criado. Abre uma janela onde você pode preencher:
+              <ul>
+                <li><strong>Descrição</strong> — detalhes sobre a tarefa</li>
+                <li><strong>Categoria</strong> — pra colorir e organizar (veja a seção sobre categorias)</li>
+                <li><strong>Prioridade</strong> — alta, média ou baixa</li>
+                <li><strong>Data de início</strong> e <strong>data de vencimento</strong> — pros prazos aparecerem no Calendário e na tela "Hoje"</li>
+                <li><strong>Responsável</strong> — quem fica encarregado</li>
+              </ul>
+            </li>
+          </ol>
+          <p class="help-tip">💡 Dica: você não precisa preencher tudo. O mínimo é só o título — o resto é opcional.</p>
+        </section>
+
+        <section class="help-section" id="help-arrastar">
+          <h3>↔️ Arrastando e organizando</h3>
+          <p>Quase tudo no Flux pode ser <strong>arrastado</strong>:</p>
+          <ul class="help-bullets">
+            <li><strong>Tarefas</strong> — segure e arraste pra mudar de coluna ou de posição dentro da mesma coluna.</li>
+            <li><strong>Colunas inteiras</strong> — segure o título da coluna e arraste pra reordenar.</li>
+            <li><strong>Quadros na barra lateral</strong> — segure por 1 segundo (no celular) ou clique e segure (no computador) e arraste pra mudar a ordem dos quadros.</li>
+          </ul>
+          <p class="help-tip">💡 No celular, dê um toque longo (1 segundo) antes de arrastar — o Flux espera pra não confundir com um clique normal.</p>
+        </section>
+
+        <section class="help-section" id="help-categorias">
+          <h3>🎨 Categorias e cores</h3>
+          <p>Categorias são <strong>etiquetas coloridas</strong> que aparecem em cima da tarefa. Servem pra você bater o olho e saber do que se trata.</p>
+          <p>O Flux já vem com algumas prontas (Feature, Bug, Crítico, Pesquisa…). Mas você pode <strong>criar a sua</strong>:</p>
+          <ol class="help-steps">
+            <li>Ao editar uma tarefa, no campo <strong>Categoria</strong>, escolha <strong>+ Personalizado…</strong></li>
+            <li>Aparece um campo pra você digitar o nome (ex: <em>Plantão</em>, <em>Folga</em>, <em>Férias</em>) e escolher a cor.</li>
+            <li>Pronto. A etiqueta aparece colorida em cima da tarefa, em qualquer tela do Flux.</li>
+          </ol>
+          <p class="help-tip">💡 A categoria personalizada vale só pra aquela tarefa. Se outra tarefa precisar da mesma categoria, basta criar de novo (ou copiar o nome e a cor).</p>
+        </section>
+
+        <section class="help-section" id="help-hoje">
+          <h3>☀️ A tela "Hoje"</h3>
+          <p>A tela <strong>Hoje</strong> (na barra lateral, parte de baixo) junta as tarefas de <strong>todos os seus quadros</strong> num só lugar. É o lugar ideal pra abrir o Flux de manhã.</p>
+          <p>Mostra duas seções:</p>
+          <ul class="help-bullets">
+            <li><strong>Hoje</strong> — tudo que vence hoje, começa hoje, ou está em andamento hoje (ex: férias que cobrem o dia).</li>
+            <li><strong>Próximos 7 dias</strong> — o que tá vindo, agrupado por dia, pra você ver a semana de relance.</li>
+          </ul>
+          <p>Pra uma tarefa aparecer aqui, ela precisa ter <strong>data de vencimento</strong> ou <strong>data de início</strong> preenchida.</p>
+        </section>
+
+        <section class="help-section" id="help-calendario">
+          <h3>📅 Calendário e prazos</h3>
+          <p>Cada quadro tem uma aba <strong>Calendário</strong> (em cima, junto com Kanban e Tabela). Mostra o mês todo com as tarefas no dia do <strong>vencimento</strong>.</p>
+          <p>Use as setas em cima do calendário pra navegar entre meses. Clique em qualquer tarefa pra abrir e editar.</p>
+        </section>
+
+        <section class="help-section" id="help-convidar">
+          <h3>👥 Convidar pessoas pro mesmo quadro</h3>
+          <p>Dá pra compartilhar um quadro com outras pessoas (família, time de trabalho). Cada um vê e edita do próprio celular/computador.</p>
+          <ol class="help-steps">
+            <li>Dentro do quadro, clique no botão <strong>Membros</strong> (em cima do quadro).</li>
+            <li>Aperte <strong>Gerar link de convite</strong>.</li>
+            <li>Liste os emails das pessoas que você quer que entrem (uma por linha).</li>
+            <li>Copie o link e mande pro grupo no WhatsApp/Telegram.</li>
+            <li>Quem clicar e entrar com um email da lista, ganha acesso automaticamente.</li>
+          </ol>
+        </section>
+
+        <section class="help-section" id="help-dicas">
+          <h3>💡 Dicas rápidas</h3>
+          <ul class="help-bullets">
+            <li><strong>Esqueceu como funciona um botão?</strong> Passe o mouse em cima — quase todo botão importante tem uma descrição rápida.</li>
+            <li><strong>Modo escuro</strong> — em Configurações você troca entre claro, escuro, ou automático (segue o sistema).</li>
+            <li><strong>Buscar tarefa</strong> — a barra de busca no topo procura em todos os quadros que você tem aberto.</li>
+            <li><strong>Instalar no celular</strong> — abre o Flux no navegador do celular, vai em "Compartilhar" (iOS) ou no menu ⋮ (Android) e escolha "Adicionar à tela de início". Fica que nem um app de verdade.</li>
+            <li><strong>Problema ou sugestão?</strong> Use o botão <strong>Reportar bug</strong> aqui na barra lateral. Chega direto pra gente.</li>
+          </ul>
+        </section>
+
+        <div class="help-footer">
+          <p>Travou em algum ponto? Manda mensagem que a gente conserta ou explica melhor. 🛟</p>
+        </div>
+      </div>
     </section>
 
     <!-- ACTIVITY (workspace-level) -->

@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.8.2',
+    date: '2026-05-11',
+    notes: [
+      '📖 Nova aba "Como usar" na barra lateral — guia em português coloquial pra aprender (ou relembrar) como mexer no Flux. Boa pra mostrar pra quem tá começando',
+    ],
+  },
+  {
     version: '1.8.1',
     date: '2026-05-11',
     notes: [
