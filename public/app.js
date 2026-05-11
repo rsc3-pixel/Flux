@@ -3598,6 +3598,14 @@ const TOUR_STEPS = [
     title: '🔀 Trocar de visão',
     text: 'Cada quadro tem várias visões. Kanban é a clássica (colunas com cartões); tem também Tabela, Calendário, Cronograma e mais. Passe o mouse nas abas pra ver o que cada uma faz.',
     placement: 'bottom',
+    // The view tabs are hidden on workspace-level views (help, today, settings…)
+    // Since the tour is launched FROM "Como usar" (a workspace view), the tabs
+    // won't be visible. Switch to kanban first if a board is loaded.
+    beforeShow: () => {
+      if (state.currentBoardId && WORKSPACE_VIEWS.has(state.view)) {
+        switchView('kanban');
+      }
+    },
   },
   {
     selector: '[data-view="today"]',
@@ -3638,10 +3646,13 @@ function startTour() {
 function showTourStep() {
   const step = TOUR_STEPS[_tour.idx];
   if (!step) return endTour();
+  // Run any pre-step action (e.g., navigating to a view that makes the target visible)
+  if (step.beforeShow) step.beforeShow();
   let target = document.querySelector(step.selector);
   if (!target && step.fallback) target = document.querySelector(step.fallback);
-  if (!target) {
-    // Element missing (e.g., hidden by feature flag) — skip ahead
+  // Skip if target missing OR present-but-invisible (display:none → zero rect)
+  const rect = target ? target.getBoundingClientRect() : null;
+  if (!target || (rect.width === 0 && rect.height === 0)) {
     _tour.idx += 1;
     return showTourStep();
   }
@@ -3653,7 +3664,8 @@ function showTourStep() {
   $('#tourProgress').textContent = `${_tour.idx + 1} / ${TOUR_STEPS.length}`;
   $('#tourPrevBtn').classList.toggle('hidden', _tour.idx === 0);
   $('#tourNextBtn').textContent = _tour.idx === TOUR_STEPS.length - 1 ? 'Concluir' : 'Próximo';
-  // Position highlight + popover after a tick so layout is settled
+  // Position highlight + popover after a tick so layout is settled (especially
+  // important after beforeShow may have switched views)
   requestAnimationFrame(positionTourStep);
 }
 
@@ -4144,7 +4156,6 @@ function setupEventListeners() {
     if (_tour.idx > 0) { _tour.idx -= 1; showTourStep(); }
   });
   $('#tourSkipBtn')?.addEventListener('click', endTour);
-  $('#helpStartTourBtn')?.addEventListener('click', startTour);
   $('#helpStartTourBtnTop')?.addEventListener('click', startTour);
   $('#welcomeStartTourBtn')?.addEventListener('click', () => {
     // Dismiss welcome (mark seen) and immediately start the tour
