@@ -3523,7 +3523,7 @@ async function submitBugReport(e) {
     });
     if (res.ok) {
       status.classList.add('success');
-      status.textContent = '✓ Bug enviado, obrigado pelo feedback!';
+      status.textContent = '✓ Mensagem enviada, obrigado pelo contato!';
       submitBtn.textContent = 'Enviado';
       setTimeout(closeAllModals, 1800);
     } else {
