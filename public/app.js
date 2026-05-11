@@ -1157,6 +1157,13 @@ function allCards() {
 function renderBoardsNav() {
   const nav = $('#boardsNav');
   nav.innerHTML = '';
+  if (state.boards.length === 0) {
+    const hint = document.createElement('div');
+    hint.className = 'boards-nav-empty';
+    hint.textContent = 'Nenhum quadro ainda — use o botão abaixo pra criar o primeiro.';
+    nav.appendChild(hint);
+    return;
+  }
   for (const b of state.boards) {
     const btn = document.createElement('button');
     btn.dataset.boardId = b.id;
@@ -1206,11 +1213,28 @@ function renderKanban() {
   const container = $('#listsContainer');
   container.innerHTML = '';
 
+  // Empty state for brand-new boards: explain the concept in plain Portuguese
+  // rather than dropping the user into an empty page with just an "+" button.
+  if (board.lists.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'kanban-empty';
+    empty.innerHTML = `
+      <div class="kanban-empty-emoji">🎯</div>
+      <h3>Vamos começar?</h3>
+      <p>Um quadro funciona como uma agenda em colunas. Cada coluna é uma etapa do trabalho —
+      por exemplo: <strong>A fazer</strong>, <strong>Fazendo</strong> e <strong>Pronto</strong>.
+      Cada tarefa vira um cartão que você arrasta entre as colunas conforme avança.</p>
+      <p class="kanban-empty-hint">Clique no botão <strong>+ Adicionar lista</strong> ali do lado pra criar sua primeira coluna.</p>
+    `;
+    container.appendChild(empty);
+  }
+
   for (const list of board.lists) container.appendChild(renderList(list));
 
   const addBtn = document.createElement('button');
   addBtn.className = 'add-list-btn';
   addBtn.textContent = '+ Adicionar lista';
+  addBtn.title = 'Cria uma coluna nova no quadro (ex: A fazer, Fazendo, Pronto)';
   addBtn.addEventListener('click', addList);
   container.appendChild(addBtn);
 
@@ -1281,8 +1305,17 @@ function renderList(list) {
   cardsContainer.className = 'cards-container';
   cardsContainer.dataset.listId = list.id;
 
-  for (const card of list.cards.filter(matchesSearch)) {
-    cardsContainer.appendChild(renderCard(card));
+  const visibleCards = list.cards.filter(matchesSearch);
+  for (const card of visibleCards) cardsContainer.appendChild(renderCard(card));
+
+  // Empty state — distinguishes "no cards at all" from "filtered out".
+  if (visibleCards.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.className = 'list-empty-msg';
+    emptyMsg.textContent = list.cards.length === 0
+      ? 'Vazio. Use o + abaixo pra adicionar a primeira tarefa.'
+      : 'Nenhuma tarefa bate com a busca.';
+    cardsContainer.appendChild(emptyMsg);
   }
 
   el.appendChild(cardsContainer);
@@ -1303,6 +1336,7 @@ function renderList(list) {
   const addCard = document.createElement('button');
   addCard.className = 'add-card-btn';
   addCard.textContent = '+ Adicionar card';
+  addCard.title = 'Adiciona uma tarefa nesta coluna';
   addCard.addEventListener('click', () => openCardModal(null, list.id));
   el.appendChild(addCard);
 
@@ -1615,7 +1649,7 @@ function renderCardsGallery() {
 
   const cards = allCards().filter(matchesSearch);
   if (!cards.length) {
-    grid.innerHTML = `<p style="color:white;font-size:14px">Nenhum card encontrado.</p>`;
+    grid.innerHTML = `<p class="gallery-empty">Nenhuma tarefa por aqui ainda. Use o botão <strong>+</strong> dentro de uma coluna no Kanban pra criar a primeira.</p>`;
     return;
   }
 
@@ -1907,7 +1941,7 @@ function renderGantt() {
   wrap.innerHTML = '';
 
   if (!cards.length) {
-    wrap.innerHTML = '<div class="gantt-empty">Adicione data de início ou vencimento aos cards pra ver o cronograma.</div>';
+    wrap.innerHTML = '<div class="gantt-empty">Pra ver o cronograma, edite uma tarefa e preencha a <strong>data de início</strong> e/ou <strong>data de vencimento</strong>.</div>';
     $('#ganttRangeLabel').textContent = '';
     return;
   }
@@ -2078,7 +2112,7 @@ async function renderToday() {
   if (sortedDays.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'today-empty';
-    empty.textContent = 'Nada nos próximos 7 dias.';
+    empty.textContent = 'Nenhuma tarefa programada pra esta semana.';
     futureSection.appendChild(empty);
   } else {
     for (const dayKey of sortedDays) {
@@ -2169,7 +2203,7 @@ async function renderActivity() {
   }
   container.innerHTML = '';
   if (!entries.length) {
-    container.innerHTML = '<div class="activity-empty">Nenhuma atividade registrada ainda. Crie um card ou edite algo.</div>';
+    container.innerHTML = '<div class="activity-empty">Ainda não rolou nenhuma atividade. Quando você (ou alguém do quadro) criar/editar uma tarefa, aparece aqui.</div>';
     return;
   }
 
@@ -3765,7 +3799,7 @@ function setupEventListeners() {
     state.currentBoard = null;
     await loadBoards();
     if (state.boards.length) await loadBoard(state.boards[0].id);
-    else { $('#boardTitle').textContent = 'Crie um quadro para começar'; $('#listsContainer').innerHTML = ''; }
+    else { $('#boardTitle').textContent = 'Crie seu primeiro quadro'; $('#listsContainer').innerHTML = '<div class="kanban-empty"><div class="kanban-empty-emoji">👋</div><h3>Bem-vindo ao Flux!</h3><p>Aqui você organiza suas tarefas em quadros. Cada quadro é tipo um projeto, dividido em colunas (etapas) e tarefas que você arrasta entre elas.</p><p class="kanban-empty-hint">Use o botão <strong>Novo Quadro</strong> na barra lateral pra criar o primeiro.</p></div>'; }
   });
 
   // Wizard

@@ -12,6 +12,15 @@
 
 const releases = [
   {
+    version: '1.8.1',
+    date: '2026-05-11',
+    notes: [
+      '👋 Quadros e listas vazios agora explicam o que fazer em vez de aparecer em branco — pra ajudar quem tá usando o Flux pela primeira vez',
+      '💡 Passe o mouse sobre os botões da barra lateral pra ver uma descrição rápida do que cada um faz',
+      '🎨 Barra de rolagem agora segue o tema (sai do branco gritante no modo escuro)',
+    ],
+  },
+  {
     version: '1.8.0',
     date: '2026-05-10',
     notes: [

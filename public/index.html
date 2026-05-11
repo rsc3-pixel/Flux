@@ -90,14 +90,14 @@
         <div class="sidebar-section-title">Quadros</div>
         <nav class="boards-nav" id="boardsNav"></nav>
       </div>
-      <button id="newBoardBtn" class="btn btn-primary btn-block" data-icon="plus" data-anim="pop">Novo Quadro</button>
+      <button id="newBoardBtn" class="btn btn-primary btn-block" data-icon="plus" data-anim="pop" title="Cria um novo quadro pra organizar tarefas (ex: Trabalho, Casa, Escala)">Novo Quadro</button>
 
       <div class="sidebar-section sidebar-workspace-nav">
         <div class="sidebar-section-title">Workspace</div>
         <nav class="ws-nav">
-          <button class="ws-nav-item" data-view="today"     data-icon="sun"         data-anim="pop">Hoje</button>
-          <button class="ws-nav-item" data-view="activity"  data-icon="bell"        data-anim="wiggle">Atividade</button>
-          <button class="ws-nav-item" data-view="analytics" data-icon="bar-chart-3" data-anim="bounce">Analytics</button>
+          <button class="ws-nav-item" data-view="today"     data-icon="sun"         data-anim="pop"    title="Veja o que tem pra hoje e nos próximos 7 dias, juntando tarefas de todos os quadros">Hoje</button>
+          <button class="ws-nav-item" data-view="activity"  data-icon="bell"        data-anim="wiggle" title="Histórico do que foi criado, editado ou movido nos seus quadros">Atividade</button>
+          <button class="ws-nav-item" data-view="analytics" data-icon="bar-chart-3" data-anim="bounce" title="Gráficos e números sobre suas tarefas (quantas tem, quantas concluiu, etc)">Analytics</button>
           <!-- Finance tab — JS reveals only when feature flag 'financial' is on -->
           <button class="ws-nav-item hidden" id="financialNavBtn" data-view="financial" data-icon="dollar-sign" data-anim="pop">Finanças</button>
           <!-- Admin tab — JS reveals only when state.user.is_owner is true -->
@@ -137,12 +137,12 @@
       </header>
 
       <div class="view-tabs" id="viewTabs">
-        <button class="view-tab active" data-view="kanban"    data-icon="kanban-square" data-anim="pop">Kanban</button>
-        <button class="view-tab"        data-view="table"     data-icon="table"         data-anim="pop">Tabela</button>
-        <button class="view-tab"        data-view="cards"     data-icon="layout-grid"   data-anim="pop">Cartões</button>
-        <button class="view-tab"        data-view="calendar"  data-icon="calendar"      data-anim="pop">Calendário</button>
-        <button class="view-tab"        data-view="gantt"     data-icon="gantt-chart"   data-anim="pop">Cronograma</button>
-        <button class="view-tab"        data-view="dashboard" data-icon="bar-chart-3"   data-anim="bounce">Dashboard</button>
+        <button class="view-tab active" data-view="kanban"    data-icon="kanban-square" data-anim="pop"    title="Visão em colunas — arraste tarefas entre etapas">Kanban</button>
+        <button class="view-tab"        data-view="table"     data-icon="table"         data-anim="pop"    title="Tudo em uma tabela com colunas (responsável, prazo, prioridade…)">Tabela</button>
+        <button class="view-tab"        data-view="cards"     data-icon="layout-grid"   data-anim="pop"    title="Galeria visual de todas as tarefas do quadro">Cartões</button>
+        <button class="view-tab"        data-view="calendar"  data-icon="calendar"      data-anim="pop"    title="Calendário mensal — tarefas aparecem no dia do vencimento">Calendário</button>
+        <button class="view-tab"        data-view="gantt"     data-icon="gantt-chart"   data-anim="pop"    title="Linha do tempo das tarefas (precisa de data de início e/ou vencimento)">Cronograma</button>
+        <button class="view-tab"        data-view="dashboard" data-icon="bar-chart-3"   data-anim="bounce" title="Resumo numérico do quadro (concluídas, atrasadas, etc)">Dashboard</button>
       </div>
 
       <main id="mainArea">
@@ -499,7 +499,7 @@
     </div><!-- /.main-area -->
 
     <!-- FAB (mobile) -->
-    <button id="fab" class="fab" aria-label="Adicionar" data-icon="plus" data-icon-only="true" data-anim="pop"></button>
+    <button id="fab" class="fab" aria-label="Adicionar" title="Criar tarefa rápida" data-icon="plus" data-icon-only="true" data-anim="pop"></button>
 
     <!-- BOTTOM NAV (mobile) -->
     <nav class="bottom-nav">
