@@ -431,7 +431,8 @@
         </section>
 
         <div class="help-footer">
-          <p>Travou em algum ponto? Manda mensagem que a gente conserta ou explica melhor. 🛟</p>
+          <p>Prefere ver tudo na prática? <button type="button" class="help-tour-link" id="helpStartTourBtn">Fazer um tour rápido pelo Flux</button></p>
+          <p>Ainda travado? Manda mensagem que a gente conserta ou explica melhor. 🛟</p>
         </div>
       </div>
     </section>
@@ -998,6 +999,23 @@
     </div>
   </div>
 
+  <!-- Tour overlay (spotlight + popover) -->
+  <div class="tour-overlay hidden" id="tourOverlay">
+    <div class="tour-highlight" id="tourHighlight"></div>
+    <div class="tour-popover" id="tourPopover">
+      <div class="tour-popover-title" id="tourTitle"></div>
+      <div class="tour-popover-text" id="tourText"></div>
+      <div class="tour-popover-footer">
+        <span class="tour-progress" id="tourProgress"></span>
+        <div class="tour-actions">
+          <button type="button" class="btn btn-ghost btn-small" id="tourSkipBtn">Sair</button>
+          <button type="button" class="btn btn-ghost btn-small hidden" id="tourPrevBtn">Voltar</button>
+          <button type="button" class="btn btn-primary btn-small" id="tourNextBtn">Próximo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: welcome (shown once for brand-new users) -->
   <div class="modal-backdrop hidden" id="welcomeModal">
     <div class="modal welcome-modal">
@@ -1035,6 +1053,7 @@
           <h2>Pronto pra começar!</h2>
           <p>Crie seu primeiro quadro pelo botão <strong>Novo Quadro</strong> na barra lateral.</p>
           <p class="welcome-small">Se ficar com dúvida em algum momento, abre <strong>"Como usar"</strong> ali na barra lateral também — tem um guia em português com tudo explicado.</p>
+          <button type="button" class="welcome-tour-link" id="welcomeStartTourBtn">✨ Quer um tour rápido (1 min)? Clique aqui.</button>
         </div>
 
       </div>

@@ -3573,6 +3573,156 @@ async function checkWhatsNew() {
   }
 }
 
+// ============ TOUR (interactive product walkthrough) ============
+// Vanilla spotlight: a single highlight box positioned via getBoundingClientRect
+// uses a huge box-shadow to darken everything outside it. Popover is a fixed
+// element anchored next to the target. Steps target real DOM elements by
+// selector; if a selector misses (sidebar collapsed on mobile, optional nav
+// item hidden), the step is skipped.
+const TOUR_STEPS = [
+  {
+    selector: '#boardsNav, .sidebar-section:has(#boardsNav)',
+    fallback: '.sidebar',
+    title: '📋 Seus quadros',
+    text: 'Aqui na barra lateral ficam todos os seus quadros. Cada quadro pode ser um projeto, uma área da vida (Casa, Trabalho), ou uma escala/agenda.',
+    placement: 'right',
+  },
+  {
+    selector: '#newBoardBtn',
+    title: '➕ Criar um quadro',
+    text: 'Clique aqui pra criar seu primeiro quadro. Dê um nome e escolha uma cor — depois é só criar as colunas e tarefas dentro dele.',
+    placement: 'right',
+  },
+  {
+    selector: '#viewTabs',
+    title: '🔀 Trocar de visão',
+    text: 'Cada quadro tem várias visões. Kanban é a clássica (colunas com cartões); tem também Tabela, Calendário, Cronograma e mais. Passe o mouse nas abas pra ver o que cada uma faz.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-view="today"]',
+    title: '☀️ A tela "Hoje"',
+    text: 'Esse atalho mostra tudo que tá programado pra hoje e pros próximos 7 dias, juntando tarefas de todos os seus quadros. Bom pra abrir o app de manhã.',
+    placement: 'right',
+  },
+  {
+    selector: '[data-view="help"]',
+    title: '📖 Ajuda quando precisar',
+    text: 'Travou? "Como usar" tem o guia completo em português. E "Reportar bug" ali do lado manda mensagem direto pro time.',
+    placement: 'right',
+  },
+];
+
+let _tour = { idx: 0, sidebarWasClosed: false };
+
+function startTour() {
+  _tour.idx = 0;
+  // On mobile, the sidebar is a drawer — open it so steps 1, 2, 4, 5 are visible
+  const isMobile = window.matchMedia('(max-width: 720px)').matches;
+  const sidebar = $('.sidebar');
+  if (isMobile && sidebar && !sidebar.classList.contains('open')) {
+    sidebar.classList.add('open');
+    _tour.sidebarWasClosed = true;
+  } else {
+    _tour.sidebarWasClosed = false;
+  }
+  // Make sure no welcome modal is still on top
+  $('#welcomeModal')?.classList.add('hidden');
+  $('#tourOverlay').classList.remove('hidden');
+  showTourStep();
+  // Re-position on resize/scroll while tour is active
+  window.addEventListener('resize', positionTourStep);
+  window.addEventListener('scroll', positionTourStep, true);
+}
+
+function showTourStep() {
+  const step = TOUR_STEPS[_tour.idx];
+  if (!step) return endTour();
+  let target = document.querySelector(step.selector);
+  if (!target && step.fallback) target = document.querySelector(step.fallback);
+  if (!target) {
+    // Element missing (e.g., hidden by feature flag) — skip ahead
+    _tour.idx += 1;
+    return showTourStep();
+  }
+  // Scroll into view if needed (smooth, centered)
+  target.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+
+  $('#tourTitle').textContent = step.title;
+  $('#tourText').textContent = step.text;
+  $('#tourProgress').textContent = `${_tour.idx + 1} / ${TOUR_STEPS.length}`;
+  $('#tourPrevBtn').classList.toggle('hidden', _tour.idx === 0);
+  $('#tourNextBtn').textContent = _tour.idx === TOUR_STEPS.length - 1 ? 'Concluir' : 'Próximo';
+  // Position highlight + popover after a tick so layout is settled
+  requestAnimationFrame(positionTourStep);
+}
+
+function positionTourStep() {
+  const step = TOUR_STEPS[_tour.idx];
+  if (!step) return;
+  let target = document.querySelector(step.selector);
+  if (!target && step.fallback) target = document.querySelector(step.fallback);
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  const PAD = 6; // pixels of breathing room around the highlight
+
+  const highlight = $('#tourHighlight');
+  highlight.style.top    = (rect.top - PAD) + 'px';
+  highlight.style.left   = (rect.left - PAD) + 'px';
+  highlight.style.width  = (rect.width + PAD * 2) + 'px';
+  highlight.style.height = (rect.height + PAD * 2) + 'px';
+
+  // Popover: place to the right by default; clamp to viewport edges
+  const popover = $('#tourPopover');
+  popover.style.visibility = 'hidden';
+  popover.style.top = '0';
+  popover.style.left = '0';
+  const pw = popover.offsetWidth;
+  const ph = popover.offsetHeight;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const GAP = 16;
+
+  let top, left;
+  if (step.placement === 'bottom') {
+    top = rect.bottom + GAP;
+    left = rect.left + (rect.width / 2) - (pw / 2);
+  } else if (step.placement === 'top') {
+    top = rect.top - ph - GAP;
+    left = rect.left + (rect.width / 2) - (pw / 2);
+  } else { // 'right' (default)
+    top = rect.top + (rect.height / 2) - (ph / 2);
+    left = rect.right + GAP;
+  }
+  // If popover would overflow right, flip to the left of the target
+  if (left + pw > vw - 12) {
+    if (step.placement === 'right') {
+      left = rect.left - pw - GAP;
+    } else {
+      left = vw - pw - 12;
+    }
+  }
+  // Clamp to viewport
+  if (left < 12) left = 12;
+  if (top < 12)  top = 12;
+  if (top + ph > vh - 12) top = vh - ph - 12;
+
+  popover.style.top  = top + 'px';
+  popover.style.left = left + 'px';
+  popover.style.visibility = 'visible';
+}
+
+function endTour() {
+  $('#tourOverlay').classList.add('hidden');
+  window.removeEventListener('resize', positionTourStep);
+  window.removeEventListener('scroll', positionTourStep, true);
+  // Restore sidebar drawer state if we forced it open
+  if (_tour.sidebarWasClosed) {
+    $('.sidebar')?.classList.remove('open');
+    _tour.sidebarWasClosed = false;
+  }
+}
+
 // Shown once per device for brand-new users only. Detection: existing users
 // have `mt_last_seen_version` set (from prior whats-new init), so they're
 // silently marked as having seen the welcome too — no annoying popup for them.
@@ -3984,6 +4134,23 @@ function setupEventListeners() {
   // Refresh button on Activity view
   $('#refreshActivityBtn')?.addEventListener('click', renderActivity);
   $('#refreshTodayBtn')?.addEventListener('click', renderToday);
+
+  // Tour wiring
+  $('#tourNextBtn')?.addEventListener('click', () => {
+    if (_tour.idx >= TOUR_STEPS.length - 1) endTour();
+    else { _tour.idx += 1; showTourStep(); }
+  });
+  $('#tourPrevBtn')?.addEventListener('click', () => {
+    if (_tour.idx > 0) { _tour.idx -= 1; showTourStep(); }
+  });
+  $('#tourSkipBtn')?.addEventListener('click', endTour);
+  $('#helpStartTourBtn')?.addEventListener('click', startTour);
+  $('#welcomeStartTourBtn')?.addEventListener('click', () => {
+    // Dismiss welcome (mark seen) and immediately start the tour
+    localStorage.setItem(SEEN_WELCOME_KEY, '1');
+    $('#welcomeModal').classList.add('hidden');
+    startTour();
+  });
 
   // Topbar gear icon — toggles Settings (clicking again returns to your board)
   $('#settingsBtn').addEventListener('click', () => {

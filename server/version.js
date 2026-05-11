@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.8.4',
+    date: '2026-05-11',
+    notes: [
+      '✨ Tour interativo pelo Flux — abre a aba "Como usar" na barra lateral e clique em "Fazer um tour rápido". 5 passos com destaque visual mostrando onde fica cada coisa importante. Bom pra mostrar pra quem tá começando',
+    ],
+  },
+  {
     version: '1.8.2',
     date: '2026-05-11',
     notes: [
