@@ -774,6 +774,58 @@ body {
 }
 .help-tour-link:hover { color: var(--color-primary-hover); }
 
+/* Big CTA at the top of "Como usar" — eye-catching gradient button */
+.help-tour-cta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin: 18px 0 4px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #0052CC 0%, #7C3AED 100%);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  box-shadow: 0 6px 18px rgba(0, 82, 204, 0.30);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.help-tour-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(0, 82, 204, 0.42);
+}
+.help-tour-cta:active { transform: translateY(0); }
+.help-tour-cta-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.help-tour-cta-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.help-tour-cta-text strong {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+}
+.help-tour-cta-text small {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+}
+.help-tour-cta-arrow {
+  font-size: 22px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.help-tour-cta:hover .help-tour-cta-arrow { transform: translateX(4px); }
+
 /* ============ TOUR (interactive walkthrough) ============ */
 .tour-overlay {
   position: fixed;

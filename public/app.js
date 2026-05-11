@@ -4145,6 +4145,7 @@ function setupEventListeners() {
   });
   $('#tourSkipBtn')?.addEventListener('click', endTour);
   $('#helpStartTourBtn')?.addEventListener('click', startTour);
+  $('#helpStartTourBtnTop')?.addEventListener('click', startTour);
   $('#welcomeStartTourBtn')?.addEventListener('click', () => {
     // Dismiss welcome (mark seen) and immediately start the tour
     localStorage.setItem(SEEN_WELCOME_KEY, '1');
