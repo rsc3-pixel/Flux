@@ -2385,7 +2385,6 @@ body {
   .finance-summary { grid-template-columns: 1fr; }
   .finance-summary-card { padding: 10px 14px; }
   .finance-summary-value { font-size: 18px; }
-  .finance-fab { bottom: calc(var(--bottom-nav-h) + 16px); }
 }
 
 /* Preview-mode banner: always visible at the top while an owner is impersonating
@@ -3789,6 +3788,10 @@ body.preview-on .topbar { top: 42px; }
   .topbar-search { max-width: 100%; }
   .user-menu-name { display: none; }
   .fab { display: flex; align-items: center; justify-content: center; }
+  /* On mobile the global .fab is context-aware (opens Nova Transação when
+     in Finanças), so the finance-specific FAB becomes redundant + visually
+     overlaps. Hide it here; desktop keeps it (where global .fab is hidden). */
+  .finance-fab { display: none; }
   .bottom-nav { display: flex; }
   .main-area { padding-bottom: calc(var(--bottom-nav-h) + 8px); }
   .view-tabs { display: none; } /* mobile uses bottom nav for primary views */
