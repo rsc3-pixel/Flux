@@ -793,6 +793,26 @@
           </label>
         </div>
 
+        <!-- Recurring section — only visible to users with access AND only when creating a new card -->
+        <div class="card-recurrence-section hidden" id="cardRecurrenceSection">
+          <div class="card-recurrence-toggle-row">
+            <div>
+              <strong>Repete todo mês</strong>
+              <small>Gera vários cards adiantados, um por mês, com a mesma data de vencimento. Ideal pra luz, água, mensalidade, plantão fixo.</small>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="cardRecurrenceToggle" />
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <div class="card-recurrence-months hidden" id="cardRecurrenceMonthsRow">
+            <label>Quantos meses adiantar
+              <input type="number" id="cardRecurrenceMonths" min="2" max="12" value="6" />
+            </label>
+            <p class="form-help">Vai criar essa quantidade de cards (incluindo o do mês atual). Cada um é independente — você edita, marca pago ou apaga separadamente.</p>
+          </div>
+        </div>
+
         <footer class="modal-footer">
           <button type="button" class="btn btn-danger" id="cardDeleteBtn">Excluir</button>
           <div class="footer-right">

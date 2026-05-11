@@ -188,6 +188,15 @@ if (!cardColsForFinance.includes('custom_category_color')) {
   db.exec('ALTER TABLE cards ADD COLUMN custom_category_color TEXT');
 }
 
+// ---- RECURRING CARDS ----
+// Cards generated together as a monthly series share a series_id. No "template"
+// row — each card stands on its own. The id is just an identifier so future
+// features (e.g., bulk-delete a series, extend a series) can find related cards.
+if (!cardColsForFinance.includes('series_id')) {
+  db.exec('ALTER TABLE cards ADD COLUMN series_id INTEGER');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_cards_series ON cards(series_id)');
+}
+
 // ---- FINANCIAL MODULE — schema only (Iteration 8.1) ----
 // Personal finance tracking (Pierre-style, much smaller scope). No multi-
 // account support yet — every transaction is implicitly in the user's single
@@ -287,6 +296,7 @@ const seedFlag = db.prepare('INSERT OR IGNORE INTO feature_flags (key, enabled) 
 seedFlag.run('report_bug', 1);  // Default ON: bug-report button in sidebar
 seedFlag.run('invites', 1);     // Default ON: invite system (Members modal)
 seedFlag.run('financial', 0);   // Default OFF: future financial module (PR pending)
+seedFlag.run('recurring_cards', 0); // Default OFF: recurring monthly cards (owner gates rollout)
 // 'registration_open' migrates the old ALLOW_REGISTRATION env var into a
 // runtime-toggleable flag. Initial value reads the env (default closed if
 // ALLOW_REGISTRATION=false), so first boot preserves the previous behavior.

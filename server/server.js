@@ -702,6 +702,126 @@ app.post('/api/cards', (req, res) => {
   res.status(201).json(card);
 });
 
+// Add `monthsAhead` months to a YYYY-MM-DD date, clamping the day to the last
+// day of the target month (e.g., Jan 31 + 1 month → Feb 28 or 29).
+function shiftMonthsClamp(yyyymmdd, monthsAhead) {
+  const [y, m, d] = yyyymmdd.split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + monthsAhead, 1));
+  const ty = target.getUTCFullYear();
+  const tm = target.getUTCMonth();
+  const daysInTarget = new Date(Date.UTC(ty, tm + 1, 0)).getUTCDate();
+  const clampedDay = Math.min(d, daysInTarget);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${ty}-${pad(tm + 1)}-${pad(clampedDay)}`;
+}
+
+// Create a monthly recurring series: N cards with the same title/category/etc,
+// each with due_date (and start_date, if set) shifted by 1, 2, ..., N-1 months.
+// All cards share a `series_id` so we can find related cards later. Runs inside
+// a transaction so partial failures don't leave orphans.
+app.post('/api/cards/recurring', (req, res) => {
+  if (!userHasRecurringAccess(req.user))
+    return res.status(403).json({ error: 'Sem acesso a cards recorrentes' });
+
+  const { list_id, title, description, priority, due_date, start_date, assignee, category,
+          amount_cents, finance_category_id,
+          custom_category_label, custom_category_color,
+          recurrence_months } = req.body;
+
+  if (!list_id || !title) return res.status(400).json({ error: 'list_id e title obrigatórios' });
+  if (!due_date)          return res.status(400).json({ error: 'due_date obrigatório (define o dia do mês)' });
+  const boardId = auth.boardIdFromList(list_id);
+  if (!auth.canEdit(req.user.id, boardId))
+    return res.status(403).json({ error: 'Sem permissão' });
+
+  const months = parseInt(recurrence_months);
+  if (!Number.isInteger(months) || months < 2 || months > 12)
+    return res.status(400).json({ error: 'recurrence_months inválido (2 a 12)' });
+
+  const p = validPriority(priority);
+  const sd = validDate(start_date);
+  const dd = validDate(due_date);
+  const cat = validCategory(category);
+  const customLabel = validCustomCategoryLabel(custom_category_label);
+  const customColor = validCustomCategoryColor(custom_category_color);
+  if (p === undefined)  return res.status(400).json({ error: 'priority inválida' });
+  if (sd === undefined) return res.status(400).json({ error: 'start_date inválida' });
+  if (dd === undefined || dd === null) return res.status(400).json({ error: 'due_date inválida' });
+  if (cat === undefined) return res.status(400).json({ error: 'category inválida' });
+  if (customLabel === undefined) return res.status(400).json({ error: 'custom_category_label inválido' });
+  if (customColor === undefined) return res.status(400).json({ error: 'custom_category_color inválida' });
+  if ((customLabel == null) !== (customColor == null))
+    return res.status(400).json({ error: 'custom label e color devem vir juntos' });
+  if (customLabel != null && cat != null)
+    return res.status(400).json({ error: 'category e custom category são mutuamente exclusivos' });
+
+  // Finance-access gate same as POST /api/cards
+  const finAccess = userHasFinanceAccess(req.user);
+  if (cat === 'conta-a-pagar' && !finAccess)
+    return res.status(403).json({ error: 'Sem acesso ao módulo financeiro' });
+  if (!finAccess && (amount_cents != null || finance_category_id != null))
+    return res.status(403).json({ error: 'Sem acesso ao módulo financeiro' });
+
+  let amt = null;
+  if (amount_cents != null && amount_cents !== '') {
+    const n = Math.round(Number(amount_cents));
+    if (!Number.isInteger(n) || n < 0 || n > 99999999999)
+      return res.status(400).json({ error: 'amount_cents inválido' });
+    amt = n;
+  }
+  let fcid = null;
+  if (finance_category_id != null && finance_category_id !== '') {
+    const cid = parseInt(finance_category_id);
+    const owns = db.prepare('SELECT 1 FROM finance_categories WHERE id = ? AND user_id = ?').get(cid, req.user.id);
+    if (!owns) return res.status(400).json({ error: 'finance_category_id inválido' });
+    fcid = cid;
+  }
+
+  const safeTitle = String(title).slice(0, 200);
+  const safeDesc  = String(description || '').slice(0, 5000);
+  const safeAssg  = String(assignee || '').slice(0, 100);
+  const finalPriority = p || 'media';
+
+  const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM cards WHERE list_id = ?')
+                   .get(list_id).p;
+
+  const insert = db.prepare(`
+    INSERT INTO cards (list_id, title, description, priority, due_date, start_date, assignee, category,
+                       position, amount_cents, finance_category_id,
+                       custom_category_label, custom_category_color, series_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  // Two-pass: insert first card to get an id, use that id as series_id, then
+  // update + insert the rest. Avoids needing a separate "series" table.
+  const created = db.transaction((seriesAnchorDate, seriesAnchorStart) => {
+    const ids = [];
+    for (let i = 0; i < months; i++) {
+      const shiftedDue   = shiftMonthsClamp(seriesAnchorDate, i);
+      const shiftedStart = seriesAnchorStart ? shiftMonthsClamp(seriesAnchorStart, i) : null;
+      // series_id placeholder NULL on first insert — we patch it after we know the first id
+      const info = insert.run(list_id, safeTitle, safeDesc, finalPriority,
+                              shiftedDue, shiftedStart, safeAssg, cat,
+                              maxPos + 1 + i, amt, fcid,
+                              customLabel, customColor, null);
+      ids.push(info.lastInsertRowid);
+    }
+    // First inserted id becomes the series_id (acts as anchor)
+    const sid = ids[0];
+    db.prepare(`UPDATE cards SET series_id = ? WHERE id IN (${ids.map(() => '?').join(',')})`)
+      .run(sid, ...ids);
+    return ids;
+  })(dd, sd);
+
+  const listTitle = db.prepare('SELECT title FROM lists WHERE id = ?').get(list_id)?.title;
+  logBoardActivity(req, 'card.created', boardId, 'card', created[0],
+    { title: safeTitle, list: listTitle, series_count: months });
+
+  const cards = db.prepare(`SELECT * FROM cards WHERE id IN (${created.map(() => '?').join(',')}) ORDER BY due_date`)
+                  .all(...created);
+  res.status(201).json({ series_id: created[0], count: created.length, cards });
+});
+
 app.put('/api/cards/:id', (req, res) => {
   const id = parseInt(req.params.id);
   const boardId = auth.boardIdFromCard(id);
@@ -1474,6 +1594,14 @@ function userHasFinanceAccess(user) {
   if (!user) return false;
   if (user.is_owner) return true;
   const f = db.prepare("SELECT enabled FROM feature_flags WHERE key = 'financial'").get();
+  return !!(f && f.enabled);
+}
+
+// Same owner-gate pattern: owner always; non-owners only when 'recurring_cards' is on.
+function userHasRecurringAccess(user) {
+  if (!user) return false;
+  if (user.is_owner) return true;
+  const f = db.prepare("SELECT enabled FROM feature_flags WHERE key = 'recurring_cards'").get();
   return !!(f && f.enabled);
 }
 

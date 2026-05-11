@@ -210,6 +210,11 @@ function hasFinanceAccess() {
   return flagEnabled('financial') || isOwnerEffective();
 }
 
+// Same owner-gate as finance, applied to the recurring-cards feature.
+function hasRecurringAccess() {
+  return flagEnabled('recurring_cards') || isOwnerEffective();
+}
+
 // ============ AUTH BOOT ============
 async function bootAuth() {
   // Each step is wrapped so a single failure can't strand the user on a blank
@@ -423,6 +428,7 @@ const FLAG_META = {
   invites:           { label: 'Convites de membros', desc: 'Permite gerar links de convite no modal Membros do quadro' },
   financial:         { label: 'Módulo financeiro',   desc: 'View "Finanças" para acompanhar contas e transações (em construção)' },
   registration_open: { label: 'Cadastros abertos',   desc: 'Quando ON, qualquer pessoa pode criar conta na tela de login. Quando OFF, novos usuários só entram via convite com email na whitelist.' },
+  recurring_cards:   { label: 'Cards recorrentes',   desc: 'Permite marcar um card pra repetir todo mês — gera N cópias futuras com a mesma data deslocada (luz, água, mensalidades, plantão fixo). Owner sempre vê.' },
 };
 
 async function renderAdmin() {
@@ -2402,6 +2408,15 @@ function openCardModal(card, listId = null) {
   $('#cardModalTitle').textContent = card ? 'Editar Card' : 'Novo Card';
   $('#cardDeleteBtn').style.display = card ? '' : 'none';
 
+  // Recurrence section: only visible when creating a new card AND user has access.
+  // Editing an existing card never shows this — recurrence is decided at creation.
+  const recSection = $('#cardRecurrenceSection');
+  const showRecurrence = !card?.id && hasRecurringAccess();
+  recSection.classList.toggle('hidden', !showRecurrence);
+  $('#cardRecurrenceToggle').checked = false;
+  $('#cardRecurrenceMonths').value = 6;
+  $('#cardRecurrenceMonthsRow').classList.add('hidden');
+
   // Checklist is per-card data, only available once the card has been saved.
   // For new cards we hide the whole section; user can add items after first save.
   const section = $('#checklistSection');
@@ -2675,8 +2690,28 @@ async function saveCard(e) {
     }
   }
   if (!payload.title) return;
-  if (id) await api.put(`/api/cards/${id}`, payload);
-  else    await api.post('/api/cards', payload);
+  if (id) {
+    await api.put(`/api/cards/${id}`, payload);
+  } else {
+    // New card — check if user wants to create a monthly series instead
+    const recurring = !$('#cardRecurrenceSection').classList.contains('hidden')
+                       && $('#cardRecurrenceToggle').checked;
+    if (recurring) {
+      if (!payload.due_date) {
+        alert('Pra criar um card que repete todo mês, preencha a data de vencimento — é o dia que vai recorrer.');
+        return;
+      }
+      payload.recurrence_months = parseInt($('#cardRecurrenceMonths').value) || 6;
+      try {
+        await api.post('/api/cards/recurring', payload);
+      } catch (err) {
+        alert('Falha ao criar série recorrente. Tente novamente.');
+        return;
+      }
+    } else {
+      await api.post('/api/cards', payload);
+    }
+  }
   closeAllModals();
   await refreshAfterCardChange();
 }
@@ -4016,6 +4051,9 @@ function setupEventListeners() {
   $('#cardCategoryInput').addEventListener('change', () => {
     applyCardFinanceVisibility(null);
     applyCardCustomCategoryVisibility();
+  });
+  $('#cardRecurrenceToggle')?.addEventListener('change', (e) => {
+    $('#cardRecurrenceMonthsRow').classList.toggle('hidden', !e.target.checked);
   });
   $('#cardAmountInput')?.addEventListener('input', () => {
     const btn = $('#cardMarkPaidBtn');
