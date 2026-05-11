@@ -2334,6 +2334,16 @@ body {
    covered. The banner is fixed-positioned (so it stays through scroll), so we
    need explicit padding on body — applied via a class on body when active. */
 body.preview-on { padding-top: 42px; }
+/* When the preview banner is active it covers fixed/sticky elements at top:0
+   (topbar z:70, sidebar z:80). Push those down by the banner height (42px)
+   so the hamburger menu + sidebar drawer remain accessible on mobile. */
+body.preview-on .topbar { top: 42px; }
+@media (max-width: 720px) {
+  body.preview-on .sidebar {
+    top: 42px;
+    height: calc(100vh - var(--bottom-nav-h) - 42px);
+  }
+}
 
 .chart-container {
   flex: 1;
