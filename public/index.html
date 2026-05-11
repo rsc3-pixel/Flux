@@ -998,6 +998,61 @@
     </div>
   </div>
 
+  <!-- Modal: welcome (shown once for brand-new users) -->
+  <div class="modal-backdrop hidden" id="welcomeModal">
+    <div class="modal welcome-modal">
+      <button class="welcome-skip" id="welcomeSkipBtn">Pular</button>
+      <div class="welcome-slides" id="welcomeSlides">
+
+        <div class="welcome-slide" data-slide="1">
+          <div class="welcome-emoji">👋</div>
+          <h2>Bem-vindo ao Flux!</h2>
+          <p>Um lugar pra organizar suas tarefas, projetos, plantões, escala da equipe — sem se perder em abas de Excel.</p>
+          <p class="welcome-small">Vou te apresentar rapidinho. Leva uns 30 segundos.</p>
+        </div>
+
+        <div class="welcome-slide hidden" data-slide="2">
+          <div class="welcome-emoji">🧭</div>
+          <h2>Como funciona</h2>
+          <div class="welcome-mini-cards">
+            <div class="welcome-mini-card">
+              <strong>📋 Quadro</strong>
+              <span>como um projeto (Trabalho, Casa, Escala…)</span>
+            </div>
+            <div class="welcome-mini-card">
+              <strong>📑 Colunas</strong>
+              <span>etapas do trabalho (A fazer, Fazendo, Pronto…)</span>
+            </div>
+            <div class="welcome-mini-card">
+              <strong>🏷️ Tarefas</strong>
+              <span>os cartões que você arrasta entre colunas</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="welcome-slide hidden" data-slide="3">
+          <div class="welcome-emoji">🎯</div>
+          <h2>Pronto pra começar!</h2>
+          <p>Crie seu primeiro quadro pelo botão <strong>Novo Quadro</strong> na barra lateral.</p>
+          <p class="welcome-small">Se ficar com dúvida em algum momento, abre <strong>"Como usar"</strong> ali na barra lateral também — tem um guia em português com tudo explicado.</p>
+        </div>
+
+      </div>
+
+      <div class="welcome-footer">
+        <div class="welcome-dots" id="welcomeDots">
+          <span class="welcome-dot active" data-dot="1"></span>
+          <span class="welcome-dot" data-dot="2"></span>
+          <span class="welcome-dot" data-dot="3"></span>
+        </div>
+        <div class="welcome-actions">
+          <button type="button" class="btn btn-ghost hidden" id="welcomePrevBtn">Voltar</button>
+          <button type="button" class="btn btn-primary" id="welcomeNextBtn">Próximo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: report a bug -->
   <div class="modal-backdrop hidden" id="bugModal">
     <div class="modal">

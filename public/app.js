@@ -287,6 +287,11 @@ async function afterLogin() {
   }
 
   await init();
+  // Welcome must run BEFORE checkWhatsNew — both share `mt_last_seen_version`
+  // as the "existing user" signal, and checkWhatsNew sets it silently on
+  // first-ever load, which would otherwise mask brand-new users from seeing
+  // the welcome.
+  checkWelcomeModal();
   checkWhatsNew();
 }
 
@@ -3566,6 +3571,56 @@ async function checkWhatsNew() {
     // Silent failure — version check is best-effort, never blocks the app.
     console.warn('Falha ao checar novidades', err);
   }
+}
+
+// Shown once per device for brand-new users only. Detection: existing users
+// have `mt_last_seen_version` set (from prior whats-new init), so they're
+// silently marked as having seen the welcome too — no annoying popup for them.
+const SEEN_WELCOME_KEY = 'mt_seen_welcome';
+function checkWelcomeModal() {
+  if (localStorage.getItem(SEEN_WELCOME_KEY)) return;
+  // Existing user (has seen whats-new before) — they already know the app.
+  if (localStorage.getItem(SEEN_VERSION_KEY)) {
+    localStorage.setItem(SEEN_WELCOME_KEY, '1');
+    return;
+  }
+  // Brand-new user: show the intro slides.
+  showWelcomeModal();
+}
+
+function showWelcomeModal() {
+  let slide = 1;
+  const total = 3;
+  const modal = $('#welcomeModal');
+  modal.classList.remove('hidden');
+
+  const renderSlide = () => {
+    $$('.welcome-slide').forEach(el => {
+      el.classList.toggle('hidden', parseInt(el.dataset.slide) !== slide);
+    });
+    $$('.welcome-dot').forEach(d => {
+      d.classList.toggle('active', parseInt(d.dataset.dot) === slide);
+    });
+    $('#welcomePrevBtn').classList.toggle('hidden', slide === 1);
+    $('#welcomeNextBtn').textContent = slide === total ? 'Começar' : 'Próximo';
+  };
+  renderSlide();
+
+  // Mark seen + close, idempotent
+  const dismiss = () => {
+    localStorage.setItem(SEEN_WELCOME_KEY, '1');
+    modal.classList.add('hidden');
+  };
+
+  $('#welcomeNextBtn').onclick = () => {
+    if (slide >= total) dismiss();
+    else { slide += 1; renderSlide(); }
+  };
+  $('#welcomePrevBtn').onclick = () => {
+    if (slide > 1) { slide -= 1; renderSlide(); }
+  };
+  $('#welcomeSkipBtn').onclick = dismiss;
+  modal.onclick = (e) => { if (e.target === modal) dismiss(); };
 }
 
 function showWhatsNewModal(current, newReleases) {
