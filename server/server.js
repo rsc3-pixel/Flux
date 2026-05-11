@@ -1809,6 +1809,58 @@ app.post('/api/finance/transactions', requireFinancialFlag, (req, res) => {
   });
 });
 
+// Recurring monthly transactions: creates N copies with `transaction_date`
+// shifted by +1 month each (clamped to end-of-month). Each is independent —
+// editing or deleting one doesn't touch the others. Useful for "salário todo
+// dia 5", "aluguel todo dia 10", etc. Gated by recurring_cards flag (owner
+// always; non-owners need both `financial` AND `recurring_cards` enabled).
+app.post('/api/finance/transactions/recurring', requireFinancialFlag, (req, res) => {
+  if (!userHasRecurringAccess(req.user))
+    return res.status(403).json({ error: 'Sem acesso a transações recorrentes' });
+
+  const type = req.body?.type;
+  if (!FINANCE_KIND.has(type)) return res.status(400).json({ error: 'Tipo deve ser income ou expense' });
+  const amount = parseAmountCents(req.body?.amount_cents);
+  if (amount === null) return res.status(400).json({ error: 'Valor inválido' });
+  const date = parseDate(req.body?.transaction_date);
+  if (!date) return res.status(400).json({ error: 'Data inválida (use YYYY-MM-DD)' });
+  const description = String(req.body?.description || '').slice(0, 500);
+  const months = parseInt(req.body?.recurrence_months);
+  if (!Number.isInteger(months) || months < 2 || months > 12)
+    return res.status(400).json({ error: 'recurrence_months inválido (2 a 12)' });
+
+  let categoryId = null;
+  if (req.body?.category_id != null) {
+    const cid = parseInt(req.body.category_id);
+    const cat = db.prepare('SELECT id FROM finance_categories WHERE id = ? AND user_id = ?').get(cid, req.user.id);
+    if (!cat) return res.status(400).json({ error: 'Categoria inválida' });
+    categoryId = cid;
+  }
+
+  const insert = db.prepare(`
+    INSERT INTO finance_transactions
+      (user_id, category_id, type, amount_cents, description, transaction_date)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  const ids = db.transaction(() => {
+    const created = [];
+    for (let i = 0; i < months; i++) {
+      const shiftedDate = shiftMonthsClamp(date, i);
+      const info = insert.run(req.user.id, categoryId, type, amount, description, shiftedDate);
+      created.push(info.lastInsertRowid);
+    }
+    return created;
+  })();
+
+  const txs = db.prepare(`
+    SELECT id, category_id, type, amount_cents, description, transaction_date, source_card_id
+    FROM finance_transactions
+    WHERE id IN (${ids.map(() => '?').join(',')})
+    ORDER BY transaction_date
+  `).all(...ids);
+  res.status(201).json({ count: txs.length, transactions: txs });
+});
+
 app.patch('/api/finance/transactions/:id', requireFinancialFlag, (req, res) => {
   const id = parseInt(req.params.id);
   const existing = db.prepare('SELECT * FROM finance_transactions WHERE id = ? AND user_id = ?').get(id, req.user.id);

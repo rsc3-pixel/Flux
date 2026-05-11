@@ -550,6 +550,27 @@
           <label>Descrição (opcional)
             <input type="text" id="financeTxDescription" maxlength="500" placeholder="Ex: almoço" />
           </label>
+
+          <!-- Recurring monthly section — only when creating + user has access -->
+          <div class="card-recurrence-section hidden" id="financeTxRecurrenceSection">
+            <div class="card-recurrence-toggle-row">
+              <div>
+                <strong>Repete todo mês</strong>
+                <small>Gera várias transações adiantadas, uma por mês. Ideal pra salário (todo dia 5), aluguel, mensalidade.</small>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="financeTxRecurrenceToggle" />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+            <div class="card-recurrence-months hidden" id="financeTxRecurrenceMonthsRow">
+              <label>Quantos meses adiantar
+                <input type="number" id="financeTxRecurrenceMonths" min="2" max="12" value="6" />
+              </label>
+              <p class="form-help">Cada transação é independente — edita, apaga ou ajusta uma sem afetar as outras (útil porque luz/água variam).</p>
+            </div>
+          </div>
+
           <p class="auth-error hidden" id="financeTxError"></p>
 
           <footer class="modal-footer">

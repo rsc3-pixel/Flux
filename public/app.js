@@ -981,6 +981,14 @@ function openFinanceTxModal(tx) {
   );
   renderFinanceTxModalCategories();
   if (tx?.category_id) $('#financeTxCategory').value = tx.category_id;
+  // Recurrence section: only when creating + user has access. Editing existing
+  // transactions never shows this (each transaction is independent).
+  const recSection = $('#financeTxRecurrenceSection');
+  const showRecurrence = !tx?.id && hasRecurringAccess();
+  recSection.classList.toggle('hidden', !showRecurrence);
+  $('#financeTxRecurrenceToggle').checked = false;
+  $('#financeTxRecurrenceMonths').value = 6;
+  $('#financeTxRecurrenceMonthsRow').classList.add('hidden');
   $('#financeTxModal').classList.remove('hidden');
   setTimeout(() => $('#financeTxAmount').focus(), 50);
 }
@@ -1025,9 +1033,19 @@ async function saveFinanceTx() {
   const description = $('#financeTxDescription').value.trim();
   const category_id = $('#financeTxCategory').value || null;
   const payload = { type: f.editingType, amount_cents, transaction_date, description, category_id: category_id ? parseInt(category_id) : null };
+  // New transaction with recurrence toggle on → use the recurring endpoint
+  const isRecurring = !f.editingId
+    && !$('#financeTxRecurrenceSection').classList.contains('hidden')
+    && $('#financeTxRecurrenceToggle').checked;
   try {
-    if (f.editingId) await api.patch(`/api/finance/transactions/${f.editingId}`, payload);
-    else             await api.post('/api/finance/transactions', payload);
+    if (f.editingId) {
+      await api.patch(`/api/finance/transactions/${f.editingId}`, payload);
+    } else if (isRecurring) {
+      payload.recurrence_months = parseInt($('#financeTxRecurrenceMonths').value) || 6;
+      await api.post('/api/finance/transactions/recurring', payload);
+    } else {
+      await api.post('/api/finance/transactions', payload);
+    }
     closeFinanceTxModal();
     await renderFinancial();
   } catch {
@@ -4132,6 +4150,9 @@ function setupEventListeners() {
   });
   $('#cardRecurrenceToggle')?.addEventListener('change', (e) => {
     $('#cardRecurrenceMonthsRow').classList.toggle('hidden', !e.target.checked);
+  });
+  $('#financeTxRecurrenceToggle')?.addEventListener('change', (e) => {
+    $('#financeTxRecurrenceMonthsRow').classList.toggle('hidden', !e.target.checked);
   });
 
   $('#changePasswordForm')?.addEventListener('submit', changePassword);
