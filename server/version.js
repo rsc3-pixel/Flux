@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.8.7',
+    date: '2026-05-11',
+    notes: [
+      '💬 Botão "Reportar bug" virou "Contato" — agora você usa o mesmo canal pra mandar dúvida, sugestão ou problema. A página "Como usar" também ganhou um botão grande "Falar com a gente" pra deixar isso óbvio',
+    ],
+  },
+  {
     version: '1.8.4',
     date: '2026-05-11',
     notes: [

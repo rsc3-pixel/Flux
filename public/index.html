@@ -103,7 +103,7 @@
           <!-- Admin tab — JS reveals only when state.user.is_owner is true -->
           <button class="ws-nav-item hidden" id="adminNavBtn" data-view="admin" data-icon="shield" data-anim="pop">Admin</button>
           <button class="ws-nav-item" data-view="help"      data-icon="help-circle" data-anim="pop"   title="Guia rápido em português pra aprender a usar o Flux">Como usar</button>
-          <button class="ws-nav-item" id="reportBugBtn"     data-icon="bug"         data-anim="shake" title="Reporta um problema ou sugestão diretamente pro time">Reportar bug</button>
+          <button class="ws-nav-item" id="reportBugBtn"     data-icon="bug"         data-anim="shake" title="Dúvida, sugestão ou bug? Manda direto pro time">Contato</button>
         </nav>
         <div class="sidebar-version" id="sidebarVersion"></div>
       </div>
@@ -436,12 +436,15 @@
             <li><strong>Modo escuro</strong> — em Configurações você troca entre claro, escuro, ou automático (segue o sistema).</li>
             <li><strong>Buscar tarefa</strong> — a barra de busca no topo procura em todos os quadros que você tem aberto.</li>
             <li><strong>Instalar no celular</strong> — abre o Flux no navegador do celular, vai em "Compartilhar" (iOS) ou no menu ⋮ (Android) e escolha "Adicionar à tela de início". Fica que nem um app de verdade.</li>
-            <li><strong>Problema ou sugestão?</strong> Use o botão <strong>Reportar bug</strong> aqui na barra lateral. Chega direto pra gente.</li>
+            <li><strong>Dúvida, sugestão ou problema?</strong> Use o botão <strong>Contato</strong> aqui na barra lateral. Chega direto pra gente.</li>
           </ul>
         </section>
 
         <div class="help-footer">
-          <p>Travou em algum ponto? Manda mensagem que a gente conserta ou explica melhor. 🛟</p>
+          <div class="help-footer-emoji">🛟</div>
+          <h4>Ficou com alguma dúvida?</h4>
+          <p>Manda uma mensagem direto pra gente — pode ser dúvida de como usar, sugestão, ou reportar um problema. A gente lê tudo.</p>
+          <button type="button" class="btn btn-primary" id="helpAskQuestionBtn">💬 Falar com a gente</button>
         </div>
       </div>
     </section>
@@ -1081,17 +1084,17 @@
     </div>
   </div>
 
-  <!-- Modal: report a bug -->
+  <!-- Modal: mensagem (bug, dúvida, sugestão) -->
   <div class="modal-backdrop hidden" id="bugModal">
     <div class="modal">
       <header class="modal-header">
-        <h3>Reportar bug</h3>
+        <h3>Falar com a gente</h3>
         <button class="modal-close" data-close data-icon="x" data-icon-only="true" data-anim="pop" aria-label="Fechar"></button>
       </header>
       <form id="bugForm" class="modal-body">
-        <p class="form-help">Descreva o problema que você encontrou. Inclua o que estava fazendo quando aconteceu — quanto mais detalhes, melhor.</p>
-        <label>Descrição
-          <textarea id="bugDescription" rows="6" required maxlength="2000" placeholder="Ex: ao clicar em 'Salvar' no card, a página congelou e não consegui continuar..."></textarea>
+        <p class="form-help">Tem dúvida, sugestão ou encontrou algum problema? Escreve aqui — a gente lê tudo e responde.</p>
+        <label>Sua mensagem
+          <textarea id="bugDescription" rows="6" required maxlength="2000" placeholder="Ex: como faço pra convidar alguém pro quadro? / O botão de salvar parece travar quando..."></textarea>
         </label>
         <div id="bugStatus" class="bug-status hidden"></div>
         <footer class="modal-footer">

@@ -646,11 +646,33 @@ body {
 .help-footer {
   background: var(--color-surface-2);
   border-radius: var(--radius-md);
-  padding: 18px 24px;
+  padding: 28px 24px;
   text-align: center;
   color: var(--color-text-secondary);
   font-size: 14px;
   margin-top: 12px;
+}
+.help-footer-emoji {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+.help-footer h4 {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0 0 8px;
+}
+.help-footer p {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin: 0 auto 16px;
+  max-width: 460px;
+  line-height: 1.5;
+}
+.help-footer .btn {
+  font-size: 14px;
+  padding: 10px 22px;
 }
 
 /* ============ WELCOME MODAL ============ */

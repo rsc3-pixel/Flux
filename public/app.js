@@ -3616,7 +3616,7 @@ const TOUR_STEPS = [
   {
     selector: '[data-view="help"]',
     title: '📖 Ajuda quando precisar',
-    text: 'Travou? "Como usar" tem o guia completo em português. E "Reportar bug" ali do lado manda mensagem direto pro time.',
+    text: 'Travou? "Como usar" tem o guia completo em português. E "Contato" ali do lado manda mensagem direto pro time — dúvida, sugestão ou bug, tudo pelo mesmo canal.',
     placement: 'right',
   },
 ];
@@ -4157,6 +4157,7 @@ function setupEventListeners() {
   });
   $('#tourSkipBtn')?.addEventListener('click', endTour);
   $('#helpStartTourBtnTop')?.addEventListener('click', startTour);
+  $('#helpAskQuestionBtn')?.addEventListener('click', openBugModal);
   $('#welcomeStartTourBtn')?.addEventListener('click', () => {
     // Dismiss welcome (mark seen) and immediately start the tour
     localStorage.setItem(SEEN_WELCOME_KEY, '1');
