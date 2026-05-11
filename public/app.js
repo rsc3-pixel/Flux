@@ -3586,18 +3586,21 @@ const TOUR_STEPS = [
     title: '📋 Seus quadros',
     text: 'Aqui na barra lateral ficam todos os seus quadros. Cada quadro pode ser um projeto, uma área da vida (Casa, Trabalho), ou uma escala/agenda.',
     placement: 'right',
+    mobileDrawer: 'open',
   },
   {
     selector: '#newBoardBtn',
     title: '➕ Criar um quadro',
     text: 'Clique aqui pra criar seu primeiro quadro. Dê um nome e escolha uma cor — depois é só criar as colunas e tarefas dentro dele.',
     placement: 'right',
+    mobileDrawer: 'open',
   },
   {
     selector: '#viewTabs',
     title: '🔀 Trocar de visão',
     text: 'Cada quadro tem várias visões. Kanban é a clássica (colunas com cartões); tem também Tabela, Calendário, Cronograma e mais. Passe o mouse nas abas pra ver o que cada uma faz.',
     placement: 'bottom',
+    mobileDrawer: 'closed',
     // The view tabs are hidden on workspace-level views (help, today, settings…)
     // Since the tour is launched FROM "Como usar" (a workspace view), the tabs
     // won't be visible. Switch to kanban first if a board is loaded.
@@ -3612,28 +3615,28 @@ const TOUR_STEPS = [
     title: '☀️ A tela "Hoje"',
     text: 'Esse atalho mostra tudo que tá programado pra hoje e pros próximos 7 dias, juntando tarefas de todos os seus quadros. Bom pra abrir o app de manhã.',
     placement: 'right',
+    mobileDrawer: 'open',
   },
   {
     selector: '[data-view="help"]',
     title: '📖 Ajuda quando precisar',
     text: 'Travou? "Como usar" tem o guia completo em português. E "Contato" ali do lado manda mensagem direto pro time — dúvida, sugestão ou bug, tudo pelo mesmo canal.',
     placement: 'right',
+    mobileDrawer: 'open',
   },
 ];
 
 let _tour = { idx: 0, sidebarWasClosed: false };
 
+function isMobileTour() {
+  return window.matchMedia('(max-width: 720px)').matches;
+}
+
 function startTour() {
   _tour.idx = 0;
-  // On mobile, the sidebar is a drawer — open it so steps 1, 2, 4, 5 are visible
-  const isMobile = window.matchMedia('(max-width: 720px)').matches;
+  // Track initial sidebar drawer state so we can restore at endTour
   const sidebar = $('.sidebar');
-  if (isMobile && sidebar && !sidebar.classList.contains('open')) {
-    sidebar.classList.add('open');
-    _tour.sidebarWasClosed = true;
-  } else {
-    _tour.sidebarWasClosed = false;
-  }
+  _tour.sidebarWasClosed = !!(sidebar && !sidebar.classList.contains('open'));
   // Make sure no welcome modal is still on top
   $('#welcomeModal')?.classList.add('hidden');
   $('#tourOverlay').classList.remove('hidden');
@@ -3648,6 +3651,22 @@ function showTourStep() {
   if (!step) return endTour();
   // Run any pre-step action (e.g., navigating to a view that makes the target visible)
   if (step.beforeShow) step.beforeShow();
+  // Sync mobile sidebar drawer state for this step. Snap the change instantly
+  // (no animation) so getBoundingClientRect reads the final position immediately;
+  // otherwise we'd measure a mid-transition value and the highlight would be wrong.
+  if (isMobileTour()) {
+    const sidebar = $('.sidebar');
+    if (sidebar) {
+      const wantsOpen = step.mobileDrawer !== 'closed';
+      const isOpen = sidebar.classList.contains('open');
+      if (wantsOpen !== isOpen) {
+        sidebar.style.transition = 'none';
+        sidebar.classList.toggle('open', wantsOpen);
+        sidebar.offsetHeight; // force reflow
+        sidebar.style.transition = '';
+      }
+    }
+  }
   let target = document.querySelector(step.selector);
   if (!target && step.fallback) target = document.querySelector(step.fallback);
   // Skip if target missing OR present-but-invisible (display:none → zero rect)
@@ -3656,8 +3675,12 @@ function showTourStep() {
     _tour.idx += 1;
     return showTourStep();
   }
-  // Scroll into view if needed (smooth, centered)
-  target.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  // Scroll into view (mobile: top so popover at bottom doesn't overlap; desktop: center)
+  target.scrollIntoView({
+    block: isMobileTour() ? 'start' : 'center',
+    inline: 'center',
+    behavior: 'instant',
+  });
 
   $('#tourTitle').textContent = step.title;
   $('#tourText').textContent = step.text;
@@ -3665,7 +3688,7 @@ function showTourStep() {
   $('#tourPrevBtn').classList.toggle('hidden', _tour.idx === 0);
   $('#tourNextBtn').textContent = _tour.idx === TOUR_STEPS.length - 1 ? 'Concluir' : 'Próximo';
   // Position highlight + popover after a tick so layout is settled (especially
-  // important after beforeShow may have switched views)
+  // important after beforeShow may have switched views or drawer was toggled)
   requestAnimationFrame(positionTourStep);
 }
 
@@ -3684,15 +3707,39 @@ function positionTourStep() {
   highlight.style.width  = (rect.width + PAD * 2) + 'px';
   highlight.style.height = (rect.height + PAD * 2) + 'px';
 
-  // Popover: place to the right by default; clamp to viewport edges
   const popover = $('#tourPopover');
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // MOBILE: bottom-sheet placement (full-width pinned to top or bottom of
+  // viewport depending on where the highlight sits). Predictable, never
+  // overlaps the highlight, no clamping math.
+  if (isMobileTour()) {
+    popover.classList.add('tour-popover-mobile');
+    const highlightCenter = rect.top + rect.height / 2;
+    const placeAtBottom = highlightCenter < vh / 2;
+    if (placeAtBottom) {
+      popover.style.top    = 'auto';
+      popover.style.bottom = '16px';
+    } else {
+      popover.style.top    = '16px';
+      popover.style.bottom = 'auto';
+    }
+    popover.style.left  = '';
+    popover.style.right = '';
+    popover.style.visibility = 'visible';
+    return;
+  }
+
+  // DESKTOP: place near the target with placement preference, clamp to viewport
+  popover.classList.remove('tour-popover-mobile');
+  popover.style.bottom = '';
+  popover.style.right = '';
   popover.style.visibility = 'hidden';
   popover.style.top = '0';
   popover.style.left = '0';
   const pw = popover.offsetWidth;
   const ph = popover.offsetHeight;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
   const GAP = 16;
 
   let top, left;
@@ -3726,13 +3773,16 @@ function positionTourStep() {
 
 function endTour() {
   $('#tourOverlay').classList.add('hidden');
+  $('#tourPopover').classList.remove('tour-popover-mobile');
   window.removeEventListener('resize', positionTourStep);
   window.removeEventListener('scroll', positionTourStep, true);
-  // Restore sidebar drawer state if we forced it open
-  if (_tour.sidebarWasClosed) {
-    $('.sidebar')?.classList.remove('open');
-    _tour.sidebarWasClosed = false;
+  // Restore sidebar drawer to whatever state it was in when the tour started
+  const sidebar = $('.sidebar');
+  if (sidebar) {
+    if (_tour.sidebarWasClosed) sidebar.classList.remove('open');
+    else                        sidebar.classList.add('open');
   }
+  _tour.sidebarWasClosed = false;
 }
 
 // Shown once per device for brand-new users only. Detection: existing users

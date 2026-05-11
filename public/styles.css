@@ -916,6 +916,15 @@ body {
   .tour-popover { max-width: calc(100vw - 24px); }
 }
 
+/* Mobile bottom-sheet placement — JS adds this class to take popover out of
+   absolute-positioning math and pin it to the viewport edges. */
+.tour-popover.tour-popover-mobile {
+  left: 12px !important;
+  right: 12px !important;
+  max-width: none;
+  min-width: 0;
+}
+
 /* ============ MAIN AREA ============ */
 .main-area {
   display: flex;
