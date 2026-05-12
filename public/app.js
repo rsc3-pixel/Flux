@@ -1110,6 +1110,124 @@ async function deleteFinanceTx() {
   }
 }
 
+// ============ FINANCE: GERENCIAR CATEGORIAS ============
+// Modal state: which kind is being shown (expense/income) + which row is in
+// edit mode (-1 = none, NaN = new-row draft, otherwise the category id).
+let _catsModal = { kind: 'expense', editingId: null };
+
+async function openFinanceCatsModal() {
+  // Ensure we have fresh categories (in case user added some elsewhere)
+  try { state.finance.categories = await api.get('/api/finance/categories'); }
+  catch { /* keep what we have */ }
+  _catsModal.kind = 'expense';
+  _catsModal.editingId = null;
+  $$('.finance-cats-tab').forEach(b => b.classList.toggle('active', b.dataset.kind === 'expense'));
+  renderFinanceCatsList();
+  $('#financeCatsModal').classList.remove('hidden');
+}
+
+function renderFinanceCatsList() {
+  const wrap = $('#financeCatsList');
+  wrap.innerHTML = '';
+  const cats = state.finance.categories.filter(c => c.kind === _catsModal.kind);
+  const tops = cats.filter(c => !c.parent_id).sort((a, b) => a.position - b.position);
+  if (tops.length === 0) {
+    wrap.innerHTML = '<p class="finance-cats-empty">Nenhuma categoria. Clique em "+ Nova categoria" pra criar.</p>';
+    return;
+  }
+  for (const top of tops) {
+    wrap.appendChild(renderCatRow(top, false));
+    const children = cats.filter(c => c.parent_id === top.id).sort((a, b) => a.position - b.position);
+    for (const child of children) wrap.appendChild(renderCatRow(child, true));
+  }
+  // If user just hit "+ Nova categoria", a draft row is appended
+  if (_catsModal.editingId === 'new') wrap.appendChild(renderCatRow(null, false, true));
+}
+
+// Renders a single category row. `child` toggles the indented look; `isDraft`
+// renders the inputs in edit mode for a yet-to-be-created category.
+function renderCatRow(cat, child, isDraft) {
+  const row = document.createElement('div');
+  row.className = 'finance-cat-row' + (child ? ' is-child' : '') + (cat?.archived ? ' is-archived' : '');
+  const editing = isDraft || (cat && _catsModal.editingId === cat.id);
+
+  if (editing) {
+    // Edit/create form inline
+    const cats = state.finance.categories.filter(c => c.kind === _catsModal.kind && !c.parent_id && (!cat || c.id !== cat.id));
+    const parentOptions = ['<option value="">(nenhuma — top level)</option>']
+      .concat(cats.map(c => `<option value="${c.id}"${cat?.parent_id === c.id ? ' selected' : ''}>${c.icon || ''} ${escapeHtml(c.name)}</option>`))
+      .join('');
+    row.innerHTML = `
+      <input type="text" class="finance-cat-icon" maxlength="4" placeholder="🏠" value="${cat?.icon || ''}" />
+      <input type="text" class="finance-cat-name" maxlength="50" placeholder="Nome" value="${cat ? escapeHtml(cat.name) : ''}" />
+      <select class="finance-cat-parent">${parentOptions}</select>
+      <button type="button" class="btn btn-primary btn-small" data-action="save">Salvar</button>
+      <button type="button" class="btn btn-ghost btn-small" data-action="cancel">Cancelar</button>
+    `;
+    row.querySelector('[data-action="save"]').addEventListener('click', () => saveCat(cat, row));
+    row.querySelector('[data-action="cancel"]').addEventListener('click', () => { _catsModal.editingId = null; renderFinanceCatsList(); });
+    setTimeout(() => row.querySelector('.finance-cat-name').focus(), 50);
+  } else {
+    row.innerHTML = `
+      <span class="finance-cat-icon-display">${cat.icon || '•'}</span>
+      <span class="finance-cat-name-display">${escapeHtml(cat.name)}${cat.archived ? ' <em>(arquivada)</em>' : ''}</span>
+      <span class="finance-cat-actions">
+        <button type="button" class="btn btn-ghost btn-small" data-action="edit" title="Editar">✏️</button>
+        <button type="button" class="btn btn-ghost btn-small" data-action="archive" title="${cat.archived ? 'Desarquivar' : 'Arquivar'}">${cat.archived ? '📂' : '📁'}</button>
+        <button type="button" class="btn btn-ghost btn-danger-ghost btn-small" data-action="delete" title="Excluir">🗑</button>
+      </span>
+    `;
+    row.querySelector('[data-action="edit"]').addEventListener('click', () => { _catsModal.editingId = cat.id; renderFinanceCatsList(); });
+    row.querySelector('[data-action="archive"]').addEventListener('click', () => toggleArchiveCat(cat));
+    row.querySelector('[data-action="delete"]').addEventListener('click', () => deleteCat(cat));
+  }
+  return row;
+}
+
+async function saveCat(existing, rowEl) {
+  const name = rowEl.querySelector('.finance-cat-name').value.trim();
+  const icon = rowEl.querySelector('.finance-cat-icon').value.trim();
+  const parentVal = rowEl.querySelector('.finance-cat-parent').value;
+  const parent_id = parentVal ? parseInt(parentVal) : null;
+  if (!name) { alert('Nome obrigatório.'); return; }
+  try {
+    if (existing) {
+      await api.patch(`/api/finance/categories/${existing.id}`, { name, icon, parent_id });
+    } else {
+      await api.post('/api/finance/categories', { name, icon, kind: _catsModal.kind, parent_id });
+    }
+    state.finance.categories = await api.get('/api/finance/categories');
+    _catsModal.editingId = null;
+    renderFinanceCatsList();
+    // Refresh the main view so the new category appears in selects/list
+    if (state.view === 'financial') renderFinancial();
+  } catch (err) {
+    alert('Falha ao salvar categoria.');
+  }
+}
+
+async function toggleArchiveCat(cat) {
+  try {
+    await api.patch(`/api/finance/categories/${cat.id}`, { archived: !cat.archived });
+    state.finance.categories = await api.get('/api/finance/categories');
+    renderFinanceCatsList();
+    if (state.view === 'financial') renderFinancial();
+  } catch { alert('Falha ao arquivar.'); }
+}
+
+async function deleteCat(cat) {
+  const msg = cat.parent_id
+    ? `Excluir sub-categoria "${cat.name}"?\n\nAs transações antigas dela ficam sem categoria (não somem). Não dá pra desfazer.`
+    : `Excluir categoria "${cat.name}"?\n\nSe ela tiver sub-categorias, elas viram top-level. Transações antigas ficam sem categoria. Não dá pra desfazer.`;
+  if (!confirm(msg)) return;
+  try {
+    await api.delete(`/api/finance/categories/${cat.id}`);
+    state.finance.categories = await api.get('/api/finance/categories');
+    renderFinanceCatsList();
+    if (state.view === 'financial') renderFinancial();
+  } catch { alert('Falha ao excluir.'); }
+}
+
 // ============ AUTH FORMS ============
 let _authListenersDone = false;
 function setupAuthListeners() {
@@ -4148,6 +4266,17 @@ function setupEventListeners() {
   // digits and the value formats itself (e.g., "1250" → "12,50", "123456" → "1.234,56").
   // Eliminates the comma/dot ambiguity that was causing input errors.
   attachCurrencyMask($('#financeTxAmount'));
+  $('#financeManageCatsBtn')?.addEventListener('click', openFinanceCatsModal);
+  $$('.finance-cats-tab').forEach(b => b.addEventListener('click', () => {
+    _catsModal.kind = b.dataset.kind;
+    _catsModal.editingId = null;
+    $$('.finance-cats-tab').forEach(x => x.classList.toggle('active', x === b));
+    renderFinanceCatsList();
+  }));
+  $('#financeCatsAddBtn')?.addEventListener('click', () => {
+    _catsModal.editingId = 'new';
+    renderFinanceCatsList();
+  });
   $('#financeMonthPrev')?.addEventListener('click', () => changeFinanceMonth(-1));
   $('#financeMonthNext')?.addEventListener('click', () => changeFinanceMonth(+1));
   $('#financeFilterType')?.addEventListener('change', (e) => {

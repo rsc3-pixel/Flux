@@ -503,6 +503,7 @@
           <span id="financeMonthLabel" class="finance-month-label">—</span>
           <button id="financeMonthNext" class="btn btn-ghost" data-icon="chevron-right" data-icon-only="true" aria-label="Próximo mês"></button>
         </div>
+        <button type="button" class="btn btn-ghost" id="financeManageCatsBtn" title="Criar, editar ou apagar categorias">⚙️ Categorias</button>
       </div>
 
       <div class="finance-summary" id="financeSummary"></div>
@@ -582,6 +583,25 @@
               <button type="button" class="btn btn-primary" id="financeTxSaveBtn">Salvar</button>
             </div>
           </footer>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Gerenciar categorias de Finanças -->
+    <div class="modal-backdrop hidden" id="financeCatsModal">
+      <div class="modal finance-cats-modal">
+        <header class="modal-header">
+          <h3>Gerenciar categorias</h3>
+          <button class="modal-close" data-close data-icon="x" data-icon-only="true" data-anim="pop" aria-label="Fechar"></button>
+        </header>
+        <div class="modal-body">
+          <p class="form-help">Crie, edite ou apague categorias. Sub-categorias agrupam transações dentro de um pai (ex: Moradia → Luz, Água).</p>
+          <div class="finance-cats-tabs">
+            <button type="button" class="finance-cats-tab active" data-kind="expense">💸 Despesas</button>
+            <button type="button" class="finance-cats-tab" data-kind="income">💰 Receitas</button>
+          </div>
+          <div class="finance-cats-list" id="financeCatsList"></div>
+          <button type="button" class="btn btn-primary" id="financeCatsAddBtn">+ Nova categoria</button>
         </div>
       </div>
     </div>
