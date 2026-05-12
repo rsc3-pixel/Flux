@@ -1979,17 +1979,51 @@ app.get('/api/finance/summary', requireFinancialFlag, (req, res) => {
     return { income_cents: income, expense_cents: expense, balance_cents: income - expense };
   };
 
-  // Top 5 expense categories this month (excludes "sem categoria" — those
-  // show up in the transaction list anyway and would dominate sometimes)
+  // Top 5 expense categories this month, AGGREGATED BY PARENT when applicable.
+  // A transaction in "Luz" (child of "Moradia") rolls up under "Moradia" for
+  // this widget — gives a clean high-level view. The detail per child is
+  // attached as `children` so the UI can expand each row.
   const topCategories = db.prepare(`
-    SELECT c.id, c.name, c.icon, c.kind, SUM(t.amount_cents) AS total
+    SELECT
+      COALESCE(c.parent_id, c.id) AS group_id,
+      COALESCE(p.name, c.name)    AS group_name,
+      COALESCE(p.icon, c.icon)    AS group_icon,
+      SUM(t.amount_cents)         AS total
     FROM finance_transactions t
     JOIN finance_categories c ON c.id = t.category_id
+    LEFT JOIN finance_categories p ON p.id = c.parent_id
     WHERE t.user_id = ? AND t.transaction_date BETWEEN ? AND ? AND t.type = 'expense'
-    GROUP BY c.id, c.name, c.icon, c.kind
+    GROUP BY group_id, group_name, group_icon
     ORDER BY total DESC
     LIMIT 5
   `).all(req.user.id, fromCur, toCur);
+
+  // For each top row that's actually a parent (has children in the period),
+  // attach the per-child breakdown for the UI to expand.
+  if (topCategories.length > 0) {
+    const parentIds = topCategories.map(t => t.group_id);
+    const breakdownRows = db.prepare(`
+      SELECT c.parent_id, c.id, c.name, c.icon, SUM(t.amount_cents) AS total
+      FROM finance_transactions t
+      JOIN finance_categories c ON c.id = t.category_id
+      WHERE t.user_id = ?
+        AND t.transaction_date BETWEEN ? AND ?
+        AND t.type = 'expense'
+        AND c.parent_id IN (${parentIds.map(() => '?').join(',')})
+      GROUP BY c.id, c.name, c.icon, c.parent_id
+      ORDER BY total DESC
+    `).all(req.user.id, fromCur, toCur, ...parentIds);
+    const byParent = {};
+    for (const r of breakdownRows) (byParent[r.parent_id] ||= []).push({ id: r.id, name: r.name, icon: r.icon, total: r.total });
+    for (const top of topCategories) {
+      if (byParent[top.group_id]?.length) top.children = byParent[top.group_id];
+    }
+  }
+
+  // Compat: keep `id`/`name`/`icon` for the old client; new client reads group_*.
+  for (const t of topCategories) {
+    t.id = t.group_id; t.name = t.group_name; t.icon = t.group_icon;
+  }
 
   res.json({
     month: `${y}-${m}`,

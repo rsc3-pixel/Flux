@@ -930,6 +930,9 @@ function renderFinanceSummary() {
   `;
 }
 
+// Tracks which top-category rows are expanded (so re-renders preserve state).
+const _expandedTopCats = new Set();
+
 function renderFinanceTopCategories() {
   const wrap = $('#financeTopCategories');
   if (!wrap) return;
@@ -939,25 +942,53 @@ function renderFinanceTopCategories() {
     return;
   }
   const max = Math.max(...top.map(c => c.total));
-  // Bar chart: each row is icon + name | bar | value. Bar width is % of max.
   wrap.innerHTML = `
     <div class="finance-top-header">Top categorias (despesas do mês)</div>
-    <div class="finance-top-list">
-      ${top.map(c => {
-        const pct = Math.max(2, Math.round((c.total / max) * 100));
-        return `
-          <div class="finance-top-row">
-            <span class="finance-top-icon">${c.icon || '📦'}</span>
-            <span class="finance-top-name">${escapeHtml(c.name)}</span>
-            <div class="finance-top-bar-track">
-              <div class="finance-top-bar-fill" style="width:${pct}%"></div>
-            </div>
-            <span class="finance-top-amount">${centsToBrl(c.total)}</span>
-          </div>
-        `;
-      }).join('')}
-    </div>
+    <div class="finance-top-list" id="financeTopList"></div>
   `;
+  const list = $('#financeTopList');
+  for (const c of top) {
+    const pct = Math.max(2, Math.round((c.total / max) * 100));
+    const hasChildren = Array.isArray(c.children) && c.children.length > 0;
+    const isExpanded = _expandedTopCats.has(c.id);
+    const row = document.createElement('div');
+    row.className = 'finance-top-row' + (hasChildren ? ' has-children' : '') + (isExpanded ? ' is-expanded' : '');
+    row.innerHTML = `
+      <span class="finance-top-expand">${hasChildren ? (isExpanded ? '▾' : '▸') : ''}</span>
+      <span class="finance-top-icon">${c.icon || '📦'}</span>
+      <span class="finance-top-name">${escapeHtml(c.name)}${hasChildren ? ` <small>(${c.children.length})</small>` : ''}</span>
+      <div class="finance-top-bar-track">
+        <div class="finance-top-bar-fill" style="width:${pct}%"></div>
+      </div>
+      <span class="finance-top-amount">${centsToBrl(c.total)}</span>
+    `;
+    if (hasChildren) {
+      row.addEventListener('click', () => {
+        if (_expandedTopCats.has(c.id)) _expandedTopCats.delete(c.id);
+        else                            _expandedTopCats.add(c.id);
+        renderFinanceTopCategories();
+      });
+    }
+    list.appendChild(row);
+    if (hasChildren && isExpanded) {
+      const childMax = Math.max(...c.children.map(ch => ch.total));
+      for (const ch of c.children) {
+        const cpct = Math.max(2, Math.round((ch.total / childMax) * 100));
+        const childRow = document.createElement('div');
+        childRow.className = 'finance-top-row is-child';
+        childRow.innerHTML = `
+          <span class="finance-top-expand"></span>
+          <span class="finance-top-icon">${ch.icon || '•'}</span>
+          <span class="finance-top-name">${escapeHtml(ch.name)}</span>
+          <div class="finance-top-bar-track">
+            <div class="finance-top-bar-fill" style="width:${cpct}%"></div>
+          </div>
+          <span class="finance-top-amount">${centsToBrl(ch.total)}</span>
+        `;
+        list.appendChild(childRow);
+      }
+    }
+  }
 }
 
 function renderFinanceList() {
