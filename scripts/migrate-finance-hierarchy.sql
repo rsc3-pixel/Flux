@@ -67,11 +67,12 @@ UPDATE finance_transactions
 SET category_id = (SELECT id FROM finance_categories WHERE user_id = 2 AND name = 'Luz' AND parent_id = 3 LIMIT 1)
 WHERE user_id = 2 AND category_id = 3 AND LOWER(description) LIKE '%luz%';
 
--- Moradia > Água  (cover both "água" and accidental "agua")
+-- Moradia > Água  (case-insensitive match on accented chars: SQLite's LOWER()
+-- doesn't lowercase non-ASCII like "Á", so we match the literal forms directly)
 UPDATE finance_transactions
 SET category_id = (SELECT id FROM finance_categories WHERE user_id = 2 AND name = 'Água' AND parent_id = 3 LIMIT 1)
 WHERE user_id = 2 AND category_id = 3
-  AND (LOWER(description) LIKE '%água%' OR LOWER(description) LIKE '%agua%');
+  AND (description LIKE '%Água%' OR description LIKE '%água%' OR description LIKE '%AGUA%' OR description LIKE '%agua%');
 
 -- Moradia > Internet/Telefone
 UPDATE finance_transactions
