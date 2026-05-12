@@ -742,6 +742,33 @@ function centsToBrl(cents) {
   const v = (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `R$ ${v}`;
 }
+// Reverse currency mask helper. Takes integer cents and renders BRL display
+// (no "R$" prefix; that's for read-only). Examples:
+//   0      → "" (empty so the placeholder "0,00" shows)
+//   1      → "0,01"
+//   1250   → "12,50"
+//   123456 → "1.234,56"
+function formatAmountMask(cents) {
+  if (!cents || cents <= 0) return '';
+  const intPart = Math.floor(cents / 100);
+  const decPart = cents % 100;
+  return intPart.toLocaleString('pt-BR') + ',' + String(decPart).padStart(2, '0');
+}
+
+// Attaches a reverse mask to a text input: each keystroke captures only digits,
+// treats the accumulated string as cents (integer), and reformats. The cursor
+// naturally lands at the end after assigning .value, which is the conventional
+// behavior for currency inputs (iFood/banking-style).
+function attachCurrencyMask(input) {
+  if (!input || input.dataset.maskAttached === '1') return;
+  input.dataset.maskAttached = '1';
+  input.addEventListener('input', () => {
+    const digits = input.value.replace(/\D/g, '');
+    const cents = digits ? parseInt(digits, 10) : 0;
+    input.value = formatAmountMask(cents);
+  });
+}
+
 function parseBrlToCents(str) {
   // Accepts "12,50", "12.50", "12", "1.234,56", "1234.56" → 1250 / 1250 / 1200 / 123456 / 123456
   const cleaned = String(str || '').trim().replace(/[^\d,.\-]/g, '');
@@ -970,7 +997,7 @@ function openFinanceTxModal(tx) {
   f.editingId = tx?.id || null;
   f.editingType = tx?.type || 'expense';
   $('#financeTxModalTitle').textContent = tx ? 'Editar transação' : 'Nova transação';
-  $('#financeTxAmount').value      = tx ? (tx.amount_cents / 100).toFixed(2).replace('.', ',') : '';
+  $('#financeTxAmount').value      = formatAmountMask(tx ? tx.amount_cents : 0);
   $('#financeTxDate').value        = tx ? tx.transaction_date : todayISO();
   $('#financeTxDescription').value = tx ? (tx.description || '') : '';
   $('#financeTxError').classList.add('hidden');
@@ -1020,7 +1047,7 @@ async function saveFinanceTx() {
   errEl.classList.add('hidden');
   const amount_cents = parseBrlToCents($('#financeTxAmount').value);
   if (amount_cents === null || amount_cents <= 0) {
-    errEl.textContent = 'Valor inválido. Use formato 12,50';
+    errEl.textContent = 'Preencha um valor maior que zero.';
     errEl.classList.remove('hidden');
     return;
   }
@@ -4100,6 +4127,10 @@ function setupEventListeners() {
   $('#previewExitBtn')?.addEventListener('click', exitPreview);
 
   // Finance view + modal
+  // Reverse currency mask on the transaction amount input — user just types
+  // digits and the value formats itself (e.g., "1250" → "12,50", "123456" → "1.234,56").
+  // Eliminates the comma/dot ambiguity that was causing input errors.
+  attachCurrencyMask($('#financeTxAmount'));
   $('#financeMonthPrev')?.addEventListener('click', () => changeFinanceMonth(-1));
   $('#financeMonthNext')?.addEventListener('click', () => changeFinanceMonth(+1));
   $('#financeFilterType')?.addEventListener('change', (e) => {
