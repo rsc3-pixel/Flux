@@ -237,6 +237,19 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_finance_tx_category  ON finance_transactions(category_id);
 `);
 
+// ---- FINANCE SUB-CATEGORIES (Iteration 1.10) ----
+// Allow categories to have a parent for hierarchical organization (e.g.,
+// "Moradia > Luz", "Moradia > Água"). parent_id is NULL for top-level
+// categories. Validated server-side: parent must belong to the same user
+// and have the same kind (no income-under-expense crossover); also blocked
+// from creating multi-level depth (sub-cat can't have a sub-cat — flat 2-level
+// hierarchy keeps the UI simple).
+const financeCatCols = db.prepare('PRAGMA table_info(finance_categories)').all().map(c => c.name);
+if (!financeCatCols.includes('parent_id')) {
+  db.exec('ALTER TABLE finance_categories ADD COLUMN parent_id INTEGER REFERENCES finance_categories(id) ON DELETE SET NULL');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_finance_cat_parent ON finance_categories(parent_id)');
+}
+
 // Lazy seed of default categories for a user. Called by the finance API
 // before any read so users that never open Finanças don't have rows created
 // uselessly. Idempotent: only inserts if the user has zero categories yet.

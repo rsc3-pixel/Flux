@@ -1706,7 +1706,7 @@ app.get('/api/finance/categories', requireFinancialFlag, (req, res) => {
   // Lazy seed — first time the user opens Finanças, populate the 11 defaults.
   db.ensureDefaultCategories(req.user.id);
   const rows = db.prepare(`
-    SELECT id, name, kind, icon, position, archived
+    SELECT id, name, kind, icon, position, archived, parent_id
     FROM finance_categories
     WHERE user_id = ?
     ORDER BY archived ASC, kind DESC, position ASC, id ASC
@@ -1714,18 +1714,35 @@ app.get('/api/finance/categories', requireFinancialFlag, (req, res) => {
   res.json(rows.map(r => ({ ...r, archived: !!r.archived })));
 });
 
+// Validates a parent_id: must belong to same user, same kind, NOT itself a
+// child (we only allow a flat 2-level hierarchy). Returns null/value if OK,
+// or `undefined` to signal "invalid".
+function validateParentId(parentId, userId, kind, excludeId = null) {
+  if (parentId == null || parentId === '') return null;
+  const pid = parseInt(parentId);
+  if (!Number.isInteger(pid) || pid <= 0) return undefined;
+  if (excludeId && pid === excludeId) return undefined; // self-parent
+  const parent = db.prepare('SELECT id, kind, parent_id FROM finance_categories WHERE id = ? AND user_id = ?').get(pid, userId);
+  if (!parent) return undefined;
+  if (parent.kind !== kind) return undefined;
+  if (parent.parent_id != null) return undefined; // no multi-level
+  return pid;
+}
+
 app.post('/api/finance/categories', requireFinancialFlag, (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 50);
   const kind = req.body?.kind;
   if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
   if (!FINANCE_KIND.has(kind)) return res.status(400).json({ error: 'Tipo deve ser income ou expense' });
   const icon = String(req.body?.icon || '').slice(0, 8);
+  const parent = validateParentId(req.body?.parent_id, req.user.id, kind);
+  if (parent === undefined) return res.status(400).json({ error: 'parent_id inválido (deve ser categoria top-level do mesmo tipo)' });
   const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS m FROM finance_categories WHERE user_id = ? AND kind = ?')
                    .get(req.user.id, kind).m;
   const info = db.prepare(
-    'INSERT INTO finance_categories (user_id, name, kind, icon, position) VALUES (?, ?, ?, ?, ?)'
-  ).run(req.user.id, name, kind, icon, maxPos + 1);
-  res.status(201).json({ id: info.lastInsertRowid, name, kind, icon, position: maxPos + 1, archived: false });
+    'INSERT INTO finance_categories (user_id, name, kind, icon, position, parent_id) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(req.user.id, name, kind, icon, maxPos + 1, parent);
+  res.status(201).json({ id: info.lastInsertRowid, name, kind, icon, position: maxPos + 1, archived: false, parent_id: parent });
 });
 
 app.patch('/api/finance/categories/:id', requireFinancialFlag, (req, res) => {
@@ -1737,9 +1754,21 @@ app.patch('/api/finance/categories/:id', requireFinancialFlag, (req, res) => {
   const icon = req.body?.icon !== undefined ? String(req.body.icon).slice(0, 8) : existing.icon;
   const position = req.body?.position !== undefined ? parseInt(req.body.position) : existing.position;
   const archived = req.body?.archived !== undefined ? (req.body.archived ? 1 : 0) : existing.archived;
-  db.prepare('UPDATE finance_categories SET name = ?, icon = ?, position = ?, archived = ? WHERE id = ?')
-    .run(name, icon, position, archived, id);
-  res.json({ id, name, kind: existing.kind, icon, position, archived: !!archived });
+  // parent_id change: validate. Also block if this category already has children
+  // (would create a 3-level hierarchy).
+  let parentId = existing.parent_id;
+  if (req.body?.parent_id !== undefined) {
+    const p = validateParentId(req.body.parent_id, req.user.id, existing.kind, id);
+    if (p === undefined) return res.status(400).json({ error: 'parent_id inválido' });
+    if (p != null) {
+      const hasChildren = db.prepare('SELECT 1 FROM finance_categories WHERE parent_id = ? LIMIT 1').get(id);
+      if (hasChildren) return res.status(400).json({ error: 'Categoria com sub-categorias não pode virar sub-categoria' });
+    }
+    parentId = p;
+  }
+  db.prepare('UPDATE finance_categories SET name = ?, icon = ?, position = ?, archived = ?, parent_id = ? WHERE id = ?')
+    .run(name, icon, position, archived, parentId, id);
+  res.json({ id, name, kind: existing.kind, icon, position, archived: !!archived, parent_id: parentId });
 });
 
 app.delete('/api/finance/categories/:id', requireFinancialFlag, (req, res) => {
@@ -1765,15 +1794,32 @@ app.get('/api/finance/transactions', requireFinancialFlag, (req, res) => {
   if (FINANCE_KIND.has(req.query.type)) { where.push('t.type = ?'); args.push(req.query.type); }
   if (req.query.category) {
     const cid = parseInt(req.query.category);
-    if (Number.isInteger(cid)) { where.push('t.category_id = ?'); args.push(cid); }
+    if (Number.isInteger(cid)) {
+      // If filtering by a top-level category that has children, include the
+      // children too — "filter by Moradia" means "everything under Moradia"
+      // (Luz, Água, etc.), not just rows whose category_id is exactly Moradia.
+      const children = db.prepare('SELECT id FROM finance_categories WHERE parent_id = ? AND user_id = ?')
+                         .all(cid, req.user.id).map(r => r.id);
+      if (children.length) {
+        const ids = [cid, ...children];
+        where.push(`t.category_id IN (${ids.map(() => '?').join(',')})`);
+        args.push(...ids);
+      } else {
+        where.push('t.category_id = ?');
+        args.push(cid);
+      }
+    }
   }
   const limit = Math.min(parseInt(req.query.limit) || 200, 500);
   const rows = db.prepare(`
     SELECT t.id, t.category_id, t.type, t.amount_cents, t.description,
            t.transaction_date, t.source_card_id, t.created_at,
-           c.name AS category_name, c.icon AS category_icon
+           c.name AS category_name, c.icon AS category_icon,
+           c.parent_id AS category_parent_id,
+           p.name AS category_parent_name
     FROM finance_transactions t
     LEFT JOIN finance_categories c ON c.id = t.category_id
+    LEFT JOIN finance_categories p ON p.id = c.parent_id
     WHERE ${where.join(' AND ')}
     ORDER BY t.transaction_date DESC, t.id DESC
     LIMIT ?

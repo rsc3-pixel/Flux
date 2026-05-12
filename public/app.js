@@ -842,18 +842,37 @@ function renderFinanceMonthLabel() {
   $('#financeMonthLabel').textContent = monthLabel(state.finance.monthYM);
 }
 
+// Render categories as a flat list with 2-level hierarchy: top-level cats
+// followed by their children indented with "↳ ". Pass a select and a kind
+// filter ('income' | 'expense' | null for both). Reusable across the filter
+// and the transaction-modal select.
+function appendCategoryOptions(sel, kind, currentValue) {
+  const cats = state.finance.categories.filter(c => !c.archived && (!kind || c.kind === kind));
+  const tops = cats.filter(c => !c.parent_id);
+  const childrenByParent = {};
+  for (const c of cats) {
+    if (c.parent_id) (childrenByParent[c.parent_id] ||= []).push(c);
+  }
+  const fmt = (c, indent) => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    const prefix = indent ? '↳ ' : '';
+    const suffix = !kind ? ` (${c.kind === 'income' ? 'receita' : 'despesa'})` : '';
+    opt.textContent = `${indent ? '   ' : ''}${prefix}${c.icon || ''} ${c.name}${suffix}`.trim();
+    if (String(c.id) === String(currentValue)) opt.selected = true;
+    sel.appendChild(opt);
+  };
+  for (const top of tops) {
+    fmt(top, false);
+    for (const child of (childrenByParent[top.id] || [])) fmt(child, true);
+  }
+}
+
 function renderFinanceCategoryFilter() {
   const sel = $('#financeFilterCategory');
   if (!sel) return;
-  const current = state.finance.filterCategory;
   sel.innerHTML = '<option value="">Todas categorias</option>';
-  for (const c of state.finance.categories.filter(c => !c.archived)) {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = `${c.icon || ''} ${c.name} (${c.kind === 'income' ? 'receita' : 'despesa'})`.trim();
-    if (String(c.id) === String(current)) opt.selected = true;
-    sel.appendChild(opt);
-  }
+  appendCategoryOptions(sel, null, state.finance.filterCategory);
 }
 
 // Renders a small "X% vs mês anterior" indicator. Direction good/bad depends
@@ -967,7 +986,11 @@ function renderFinanceList() {
       const sign = t.type === 'income' ? '+' : '-';
       const colorClass = t.type === 'income' ? 'positive' : 'negative';
       const icon = t.category_icon || (t.type === 'income' ? '💰' : '💸');
-      const cat = t.category_name || '(sem categoria)';
+      // Show "Moradia › Luz" when the category has a parent (hierarchical),
+      // or just "Luz" when top-level. Falls back to "(sem categoria)" when null.
+      const cat = t.category_parent_name
+        ? `${t.category_parent_name} › ${t.category_name}`
+        : (t.category_name || '(sem categoria)');
       const desc = t.description ? `<div class="finance-tx-desc">${escapeHtml(t.description)}</div>` : '';
       row.innerHTML = `
         <span class="finance-tx-icon">${icon}</span>
@@ -1026,13 +1049,7 @@ function closeFinanceTxModal() {
 function renderFinanceTxModalCategories() {
   const sel = $('#financeTxCategory');
   sel.innerHTML = '<option value="">— sem categoria —</option>';
-  const cats = state.finance.categories.filter(c => !c.archived && c.kind === state.finance.editingType);
-  for (const c of cats) {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = `${c.icon || ''} ${c.name}`.trim();
-    sel.appendChild(opt);
-  }
+  appendCategoryOptions(sel, state.finance.editingType, null);
 }
 function setFinanceTxType(type) {
   state.finance.editingType = type;
