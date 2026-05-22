@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.10.3',
+    date: '2026-05-22',
+    notes: [
+      '🖱️ Na aba Tabela, agora é só clicar na linha da tarefa pra abrir o card — antes só dava pelo botão "Editar", que saiu junto com a coluna "Ações"',
+    ],
+  },
+  {
     version: '1.9.1',
     date: '2026-05-11',
     notes: [

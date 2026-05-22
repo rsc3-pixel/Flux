@@ -1377,6 +1377,7 @@ body {
   letter-spacing: 0.5px;
 }
 .cards-table tr:hover { background: var(--color-surface-2); }
+.cards-table tr.card-row { cursor: pointer; }
 
 .tag-priority {
   padding: 3px 10px;

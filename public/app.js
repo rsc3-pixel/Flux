@@ -1867,7 +1867,6 @@ function renderTableGroup(list, cards) {
     ${state.visibleCols.assignee ? '<th>Responsável</th>' : ''}
     ${state.visibleCols.due_date ? '<th>Vencimento</th>' : ''}
     ${state.visibleCols.description ? '<th>Descrição</th>' : ''}
-    <th>Ações</th>
   `;
   thead.appendChild(trHead);
   table.appendChild(thead);
@@ -1876,6 +1875,7 @@ function renderTableGroup(list, cards) {
   const tbody = document.createElement('tbody');
   for (const card of cards) {
     const tr = document.createElement('tr');
+    tr.className = 'card-row';
     const safeP = safePriority(card.priority);
     tr.innerHTML = `
       <td class="table-row-checkbox"><input type="checkbox" data-card-check="${parseInt(card.id) || 0}" /></td>
@@ -1884,16 +1884,19 @@ function renderTableGroup(list, cards) {
       ${state.visibleCols.assignee ? `<td>${escapeHtml(card.assignee || '—')}</td>` : ''}
       ${state.visibleCols.due_date ? `<td>${card.due_date ? (isOverdue(card.due_date) ? `<span style="color:#eb5a46;font-weight:600">${escapeHtml(formatDate(card.due_date))} ⚠</span>` : escapeHtml(formatDate(card.due_date))) : '—'}</td>` : ''}
       ${state.visibleCols.description ? `<td>${escapeHtml((card.description || '').slice(0, 60))}${(card.description || '').length > 60 ? '...' : ''}</td>` : ''}
-      <td><button class="btn btn-ghost" data-edit="${parseInt(card.id) || 0}">Editar</button></td>
     `;
-    tr.querySelector('[data-edit]').addEventListener('click', () => openCardModal(card));
+    // A linha inteira abre o card; clique no checkbox (seleção em massa) é ignorado.
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('.table-row-checkbox')) return;
+      openCardModal(card);
+    });
     tbody.appendChild(tr);
   }
 
   // Add task row
   const addRow = document.createElement('tr');
   addRow.className = 'add-task-row';
-  const colspan = 2 + Object.values(state.visibleCols).filter(Boolean).length + 1;
+  const colspan = 2 + Object.values(state.visibleCols).filter(Boolean).length;
   addRow.innerHTML = `<td colspan="${colspan}">+ Adicionar tarefa</td>`;
   addRow.addEventListener('click', () => openCardModal(null, list.id));
   tbody.appendChild(addRow);
@@ -1907,7 +1910,6 @@ function renderTableGroup(list, cards) {
     if (state.visibleCols.assignee) cells.push(`<td>${uniqueAssignees(cards)}</td>`);
     if (state.visibleCols.due_date) cells.push(`<td>${renderDateRange(cards)}</td>`);
     if (state.visibleCols.description) cells.push(`<td></td>`);
-    cells.push(`<td></td>`);
     summary.innerHTML = cells.join('');
     tbody.appendChild(summary);
   }
