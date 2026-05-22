@@ -32,6 +32,7 @@ const state = {
   filters: { category: '', priority: '', assignee: '', due: '' },
   boardMembers: [],                   // populated when board loads
   collapsedGroups: new Set(),
+  expandedCard: null,                 // aba Tabela: id do card com a linha-detalhe aberta (sanfona)
   calendarDate: new Date(),           // first day of currently shown month
   wizardStep: 1,
   wizardData: {},
@@ -1873,30 +1874,55 @@ function renderTableGroup(list, cards) {
 
   // Body
   const tbody = document.createElement('tbody');
+  const colspan = 2 + Object.values(state.visibleCols).filter(Boolean).length;
   for (const card of cards) {
-    const tr = document.createElement('tr');
-    tr.className = 'card-row';
+    const cid = parseInt(card.id) || 0;
+    const expanded = state.expandedCard === cid;
     const safeP = safePriority(card.priority);
+
+    const tr = document.createElement('tr');
+    tr.className = 'card-row' + (expanded ? ' expanded' : '');
+    tr.dataset.cardRow = cid;
     tr.innerHTML = `
-      <td class="table-row-checkbox"><input type="checkbox" data-card-check="${parseInt(card.id) || 0}" /></td>
-      <td><strong>${escapeHtml(card.title)}</strong></td>
+      <td class="table-row-checkbox"><input type="checkbox" data-card-check="${cid}" /></td>
+      <td><span class="row-caret">▸</span><strong>${escapeHtml(card.title)}</strong></td>
       ${state.visibleCols.priority ? `<td><span class="tag-priority ${safeP}">${safeP}</span></td>` : ''}
       ${state.visibleCols.assignee ? `<td>${escapeHtml(card.assignee || '—')}</td>` : ''}
       ${state.visibleCols.due_date ? `<td>${card.due_date ? (isOverdue(card.due_date) ? `<span style="color:#eb5a46;font-weight:600">${escapeHtml(formatDate(card.due_date))} ⚠</span>` : escapeHtml(formatDate(card.due_date))) : '—'}</td>` : ''}
       ${state.visibleCols.description ? `<td>${escapeHtml((card.description || '').slice(0, 60))}${(card.description || '').length > 60 ? '...' : ''}</td>` : ''}
     `;
-    // A linha inteira abre o card; clique no checkbox (seleção em massa) é ignorado.
+    // Clicar na linha abre/fecha a linha-detalhe (modo sanfona). Checkbox é ignorado.
     tr.addEventListener('click', (e) => {
       if (e.target.closest('.table-row-checkbox')) return;
-      openCardModal(card);
+      toggleCardExpand(cid);
     });
     tbody.appendChild(tr);
+
+    // Linha-detalhe: descrição completa + botão Editar. Recolhida via CSS até .expanded.
+    const detail = document.createElement('tr');
+    detail.className = 'card-detail-row' + (expanded ? ' expanded' : '');
+    detail.dataset.cardDetail = cid;
+    const descText = (card.description || '').trim();
+    detail.innerHTML = `
+      <td colspan="${colspan}">
+        <div class="card-detail-inner">
+          <div class="card-detail-desc">${descText ? escapeHtml(descText) : '<em>Sem descrição.</em>'}</div>
+          <div class="card-detail-actions">
+            <button type="button" class="btn btn-ghost" data-edit-card="${cid}">✏️ Editar</button>
+          </div>
+        </div>
+      </td>
+    `;
+    detail.querySelector('[data-edit-card]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openCardModal(card);
+    });
+    tbody.appendChild(detail);
   }
 
   // Add task row
   const addRow = document.createElement('tr');
   addRow.className = 'add-task-row';
-  const colspan = 2 + Object.values(state.visibleCols).filter(Boolean).length;
   addRow.innerHTML = `<td colspan="${colspan}">+ Adicionar tarefa</td>`;
   addRow.addEventListener('click', () => openCardModal(null, list.id));
   tbody.appendChild(addRow);
@@ -1918,6 +1944,21 @@ function renderTableGroup(list, cards) {
   content.appendChild(table);
   block.appendChild(content);
   return block;
+}
+
+// Modo sanfona da aba Tabela: abre a linha-detalhe do card clicado e fecha
+// qualquer outra aberta. Mexe só em classes (sem re-render) pra preservar o scroll.
+function toggleCardExpand(cardId) {
+  const opening = state.expandedCard !== cardId;
+  state.expandedCard = opening ? cardId : null;
+  document.querySelectorAll('#tableView .card-row.expanded, #tableView .card-detail-row.expanded')
+    .forEach((el) => el.classList.remove('expanded'));
+  if (opening) {
+    const row = document.querySelector(`#tableView [data-card-row="${cardId}"]`);
+    const det = document.querySelector(`#tableView [data-card-detail="${cardId}"]`);
+    if (row) row.classList.add('expanded');
+    if (det) det.classList.add('expanded');
+  }
 }
 
 function renderPriorityBar(cards) {

@@ -1378,6 +1378,37 @@ body {
 }
 .cards-table tr:hover { background: var(--color-surface-2); }
 .cards-table tr.card-row { cursor: pointer; }
+.cards-table tr.card-row.expanded > td { background: var(--color-surface-2); }
+.row-caret {
+  display: inline-block;
+  width: 13px;
+  font-size: 9px;
+  color: var(--color-text-secondary);
+  transition: transform 160ms ease;
+}
+.card-row.expanded .row-caret { transform: rotate(90deg); }
+.card-detail-row > td { padding: 0; border: none; }
+.card-detail-row.expanded > td { border-bottom: 1px solid var(--color-border); }
+.card-detail-inner {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  padding: 0 18px 0 40px;
+  background: var(--color-surface-2);
+  transition: max-height 200ms ease, opacity 180ms ease, padding 200ms ease;
+}
+.card-detail-row.expanded .card-detail-inner {
+  max-height: 1000px;
+  opacity: 1;
+  padding: 12px 18px 14px 40px;
+}
+.card-detail-desc {
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-text);
+}
+.card-detail-actions { margin-top: 12px; }
 
 .tag-priority {
   padding: 3px 10px;
