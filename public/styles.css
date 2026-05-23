@@ -1409,6 +1409,28 @@ body {
   color: var(--color-text);
 }
 .card-detail-actions { margin-top: 12px; }
+.card-detail-meta {
+  display: none;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+.card-detail-meta span { white-space: nowrap; }
+
+/* Mobile: Tabela compacta — esconde colunas que não cabem em telas estreitas;
+   responsável e vencimento ficam visíveis na linha-detalhe expandida. */
+@media (max-width: 600px) {
+  .cards-table .col-assignee,
+  .cards-table .col-due,
+  .cards-table .col-description { display: none; }
+  .cards-table th,
+  .cards-table td { padding: 8px 8px; font-size: 12.5px; }
+  .card-detail-meta { display: flex; }
+  .card-detail-inner { padding-left: 26px; padding-right: 12px; }
+  .card-detail-row.expanded .card-detail-inner { padding-left: 26px; padding-right: 12px; }
+}
 
 .tag-priority {
   padding: 3px 10px;

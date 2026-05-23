@@ -12,6 +12,13 @@
 
 const releases = [
   {
+    version: '1.10.4',
+    date: '2026-05-22',
+    notes: [
+      '📱 Aba Tabela agora aparece no menu inferior do celular. No mobile, as colunas Responsável e Vencimento somem do quadro pra caber direito na tela — pra ver, é só abrir a linha (eles aparecem junto com a descrição completa)',
+    ],
+  },
+  {
     version: '1.10.3',
     date: '2026-05-22',
     notes: [

@@ -1863,11 +1863,11 @@ function renderTableGroup(list, cards) {
   const trHead = document.createElement('tr');
   trHead.innerHTML = `
     <th class="table-row-checkbox"><input type="checkbox" data-group-check="${list.id}" /></th>
-    <th>Tarefa</th>
-    ${state.visibleCols.priority ? '<th>Prioridade</th>' : ''}
-    ${state.visibleCols.assignee ? '<th>Responsável</th>' : ''}
-    ${state.visibleCols.due_date ? '<th>Vencimento</th>' : ''}
-    ${state.visibleCols.description ? '<th>Descrição</th>' : ''}
+    <th class="col-title">Tarefa</th>
+    ${state.visibleCols.priority ? '<th class="col-priority">Prioridade</th>' : ''}
+    ${state.visibleCols.assignee ? '<th class="col-assignee">Responsável</th>' : ''}
+    ${state.visibleCols.due_date ? '<th class="col-due">Vencimento</th>' : ''}
+    ${state.visibleCols.description ? '<th class="col-description">Descrição</th>' : ''}
   `;
   thead.appendChild(trHead);
   table.appendChild(thead);
@@ -1885,11 +1885,11 @@ function renderTableGroup(list, cards) {
     tr.dataset.cardRow = cid;
     tr.innerHTML = `
       <td class="table-row-checkbox"><input type="checkbox" data-card-check="${cid}" /></td>
-      <td><span class="row-caret">▸</span><strong>${escapeHtml(card.title)}</strong></td>
-      ${state.visibleCols.priority ? `<td><span class="tag-priority ${safeP}">${safeP}</span></td>` : ''}
-      ${state.visibleCols.assignee ? `<td>${escapeHtml(card.assignee || '—')}</td>` : ''}
-      ${state.visibleCols.due_date ? `<td>${card.due_date ? (isOverdue(card.due_date) ? `<span style="color:#eb5a46;font-weight:600">${escapeHtml(formatDate(card.due_date))} ⚠</span>` : escapeHtml(formatDate(card.due_date))) : '—'}</td>` : ''}
-      ${state.visibleCols.description ? `<td>${escapeHtml((card.description || '').slice(0, 60))}${(card.description || '').length > 60 ? '...' : ''}</td>` : ''}
+      <td class="col-title"><span class="row-caret">▸</span><strong>${escapeHtml(card.title)}</strong></td>
+      ${state.visibleCols.priority ? `<td class="col-priority"><span class="tag-priority ${safeP}">${safeP}</span></td>` : ''}
+      ${state.visibleCols.assignee ? `<td class="col-assignee">${escapeHtml(card.assignee || '—')}</td>` : ''}
+      ${state.visibleCols.due_date ? `<td class="col-due">${card.due_date ? (isOverdue(card.due_date) ? `<span style="color:#eb5a46;font-weight:600">${escapeHtml(formatDate(card.due_date))} ⚠</span>` : escapeHtml(formatDate(card.due_date))) : '—'}</td>` : ''}
+      ${state.visibleCols.description ? `<td class="col-description">${escapeHtml((card.description || '').slice(0, 60))}${(card.description || '').length > 60 ? '...' : ''}</td>` : ''}
     `;
     // Clicar na linha abre/fecha a linha-detalhe (modo sanfona). Checkbox é ignorado.
     tr.addEventListener('click', (e) => {
@@ -1906,6 +1906,10 @@ function renderTableGroup(list, cards) {
     detail.innerHTML = `
       <td colspan="${colspan}">
         <div class="card-detail-inner">
+          <div class="card-detail-meta">
+            <span>👤 ${escapeHtml(card.assignee || 'Sem responsável')}</span>
+            <span>📅 ${card.due_date ? escapeHtml(formatDate(card.due_date)) : 'Sem vencimento'}</span>
+          </div>
           <div class="card-detail-desc">${descText ? escapeHtml(descText) : '<em>Sem descrição.</em>'}</div>
           <div class="card-detail-actions">
             <button type="button" class="btn btn-ghost" data-edit-card="${cid}">✏️ Editar</button>
@@ -1931,11 +1935,11 @@ function renderTableGroup(list, cards) {
   if (cards.length) {
     const summary = document.createElement('tr');
     summary.className = 'group-summary-row';
-    const cells = [`<td></td>`, `<td><em>${cards.length} ${cards.length === 1 ? 'tarefa' : 'tarefas'}</em></td>`];
-    if (state.visibleCols.priority) cells.push(`<td>${renderPriorityBar(cards)}</td>`);
-    if (state.visibleCols.assignee) cells.push(`<td>${uniqueAssignees(cards)}</td>`);
-    if (state.visibleCols.due_date) cells.push(`<td>${renderDateRange(cards)}</td>`);
-    if (state.visibleCols.description) cells.push(`<td></td>`);
+    const cells = [`<td></td>`, `<td class="col-title"><em>${cards.length} ${cards.length === 1 ? 'tarefa' : 'tarefas'}</em></td>`];
+    if (state.visibleCols.priority) cells.push(`<td class="col-priority">${renderPriorityBar(cards)}</td>`);
+    if (state.visibleCols.assignee) cells.push(`<td class="col-assignee">${uniqueAssignees(cards)}</td>`);
+    if (state.visibleCols.due_date) cells.push(`<td class="col-due">${renderDateRange(cards)}</td>`);
+    if (state.visibleCols.description) cells.push(`<td class="col-description"></td>`);
     summary.innerHTML = cells.join('');
     tbody.appendChild(summary);
   }
