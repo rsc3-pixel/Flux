@@ -1887,7 +1887,7 @@ function renderTableGroup(list, cards) {
       <td class="table-row-checkbox"><input type="checkbox" data-card-check="${cid}" /></td>
       <td class="col-title"><span class="row-caret">▸</span><strong>${escapeHtml(card.title)}</strong></td>
       ${state.visibleCols.priority ? `<td class="col-priority"><span class="tag-priority ${safeP}">${safeP}</span></td>` : ''}
-      ${state.visibleCols.assignee ? `<td class="col-assignee">${escapeHtml(card.assignee || '—')}</td>` : ''}
+      ${state.visibleCols.assignee ? `<td class="col-assignee"><span class="col-assignee-text">${escapeHtml(card.assignee || '—')}</span></td>` : ''}
       ${state.visibleCols.due_date ? `<td class="col-due">${card.due_date ? (isOverdue(card.due_date) ? `<span style="color:#eb5a46;font-weight:600">${escapeHtml(formatDate(card.due_date))} ⚠</span>` : escapeHtml(formatDate(card.due_date))) : '—'}</td>` : ''}
       ${state.visibleCols.description ? `<td class="col-description">${escapeHtml((card.description || '').slice(0, 60))}${(card.description || '').length > 60 ? '...' : ''}</td>` : ''}
     `;
