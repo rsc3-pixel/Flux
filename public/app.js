@@ -34,6 +34,7 @@ const state = {
   collapsedGroups: new Set(),
   expandedCard: null,                 // aba Tabela: id do card com a linha-detalhe aberta (sanfona)
   selectedCards: new Set(),           // aba Tabela: ids dos cards selecionados (checkboxes em lote)
+  tableSort: { key: null, dir: 'asc' }, // aba Tabela: ordenação por coluna (key=null → ordem original)
   calendarDate: new Date(),           // first day of currently shown month
   wizardStep: 1,
   wizardData: {},
@@ -1865,14 +1866,27 @@ function renderTableGroup(list, cards) {
   // Header
   const thead = document.createElement('thead');
   const trHead = document.createElement('tr');
+  const arrow = (k) => state.tableSort.key === k ? (state.tableSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
   trHead.innerHTML = `
     <th class="table-row-checkbox"><input type="checkbox" data-group-check="${list.id}" /></th>
-    <th class="col-title">Tarefa</th>
-    ${state.visibleCols.priority ? '<th class="col-priority">Prioridade</th>' : ''}
-    ${state.visibleCols.assignee ? '<th class="col-assignee">Responsável</th>' : ''}
-    ${state.visibleCols.due_date ? '<th class="col-due">Vencimento</th>' : ''}
+    <th class="col-title" data-sort="title">Tarefa${arrow('title')}</th>
+    ${state.visibleCols.priority ? '<th class="col-priority" data-sort="priority">Prioridade' + arrow('priority') + '</th>' : ''}
+    ${state.visibleCols.assignee ? '<th class="col-assignee" data-sort="assignee">Responsável' + arrow('assignee') + '</th>' : ''}
+    ${state.visibleCols.due_date ? '<th class="col-due" data-sort="due_date">Vencimento' + arrow('due_date') + '</th>' : ''}
     ${state.visibleCols.description ? '<th class="col-description">Descrição</th>' : ''}
   `;
+  // Clicar no cabeçalho ordena a tabela por aquela coluna.
+  trHead.querySelectorAll('[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sort;
+      if (state.tableSort.key === key) {
+        state.tableSort.dir = state.tableSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.tableSort = { key, dir: 'asc' };
+      }
+      renderTable();
+    });
+  });
   thead.appendChild(trHead);
   table.appendChild(thead);
 
@@ -1893,7 +1907,8 @@ function renderTableGroup(list, cards) {
   // Body
   const tbody = document.createElement('tbody');
   const colspan = 2 + Object.values(state.visibleCols).filter(Boolean).length;
-  for (const card of cards) {
+  const sortedCards = state.tableSort.key ? [...cards].sort(tableCardCompare) : cards;
+  for (const card of sortedCards) {
     const cid = parseInt(card.id) || 0;
     const expanded = state.expandedCard === cid;
     const safeP = safePriority(card.priority);
@@ -2084,6 +2099,23 @@ async function bulkDeleteCards() {
   state.selectedCards.clear();
   state.expandedCard = null;
   await refreshAfterCardChange();
+}
+
+// Comparador pra ordenação da aba Tabela. Valores vazios vão pro final.
+function tableCardCompare(a, b) {
+  const { key, dir } = state.tableSort;
+  if (!key) return 0;
+  let va, vb;
+  const rank = { alta: 1, media: 2, baixa: 3 };
+  if (key === 'priority')  { va = rank[a.priority] || 99; vb = rank[b.priority] || 99; }
+  else if (key === 'due_date')  { va = a.due_date || ''; vb = b.due_date || ''; }
+  else if (key === 'title')     { va = (a.title || '').toLowerCase(); vb = (b.title || '').toLowerCase(); }
+  else if (key === 'assignee')  { va = (a.assignee || '').toLowerCase(); vb = (b.assignee || '').toLowerCase(); }
+  if (!va && vb) return 1;
+  if (va && !vb) return -1;
+  if (va < vb) return dir === 'asc' ? -1 : 1;
+  if (va > vb) return dir === 'asc' ? 1 : -1;
+  return 0;
 }
 
 function renderPriorityBar(cards) {

@@ -1376,6 +1376,8 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+.cards-table th[data-sort] { cursor: pointer; user-select: none; }
+.cards-table th[data-sort]:hover { color: var(--color-primary); }
 .cards-table tr:hover { background: var(--color-surface-2); }
 .cards-table tr.card-row { cursor: pointer; }
 .cards-table tr.card-row.expanded > td { background: var(--color-surface-2); }
