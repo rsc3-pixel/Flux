@@ -33,6 +33,7 @@ const state = {
   boardMembers: [],                   // populated when board loads
   collapsedGroups: new Set(),
   expandedCard: null,                 // aba Tabela: id do card com a linha-detalhe aberta (sanfona)
+  selectedCards: new Set(),           // aba Tabela: ids dos cards selecionados (checkboxes em lote)
   calendarDate: new Date(),           // first day of currently shown month
   wizardStep: 1,
   wizardData: {},
@@ -1362,6 +1363,7 @@ async function loadBoards() {
 
 async function loadBoard(boardId) {
   state.currentBoardId = boardId;
+  state.selectedCards.clear();
   state.currentBoard = await api.get(`/api/boards/${boardId}`);
   // Fetch members in parallel for the avatar pile (cheap, doesn't gate render)
   api.get(`/api/boards/${boardId}/members`).then(m => {
@@ -1418,6 +1420,7 @@ function switchView(viewName) {
   // Activity, Analytics) know where to return when the user picks a board.
   if (!WORKSPACE_VIEWS.has(viewName)) state.lastBoardView = viewName;
   state.view = viewName;
+  $('#bulkToolbar')?.classList.add('hidden');
   $$('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === viewName));
   $$('.bottom-nav-item').forEach(t => t.classList.toggle('active', t.dataset.view === viewName));
   $$('.ws-nav-item').forEach(t => t.classList.toggle('active', t.dataset.view === viewName));
@@ -1830,6 +1833,7 @@ function renderTable() {
     const cards = list.cards.filter(matchesSearch);
     wrap.appendChild(renderTableGroup(list, cards));
   }
+  updateBulkToolbar();
 }
 
 function renderTableGroup(list, cards) {
@@ -1872,6 +1876,20 @@ function renderTableGroup(list, cards) {
   thead.appendChild(trHead);
   table.appendChild(thead);
 
+  // Group-check: selecionar/desselecionar todos os cards deste grupo.
+  const groupCheck = trHead.querySelector('[data-group-check]');
+  if (groupCheck) {
+    groupCheck.addEventListener('change', () => {
+      for (const c of cards) {
+        const id = parseInt(c.id) || 0;
+        if (groupCheck.checked) state.selectedCards.add(id);
+        else state.selectedCards.delete(id);
+      }
+      tbody.querySelectorAll('[data-card-check]').forEach(cb => { cb.checked = groupCheck.checked; });
+      updateBulkToolbar();
+    });
+  }
+
   // Body
   const tbody = document.createElement('tbody');
   const colspan = 2 + Object.values(state.visibleCols).filter(Boolean).length;
@@ -1897,6 +1915,17 @@ function renderTableGroup(list, cards) {
       toggleCardExpand(cid);
     });
     tbody.appendChild(tr);
+
+    // Checkbox: selecionar card individualmente. Restaura estado da seleção.
+    const cardCb = tr.querySelector('[data-card-check]');
+    if (cardCb) {
+      if (state.selectedCards.has(cid)) cardCb.checked = true;
+      cardCb.addEventListener('change', () => {
+        if (cardCb.checked) state.selectedCards.add(cid);
+        else state.selectedCards.delete(cid);
+        updateBulkToolbar();
+      });
+    }
 
     // Linha-detalhe: descrição + ações rápidas (Concluir, Mover, Editar). Recolhida via CSS até .expanded.
     const allLists = state.currentBoard.lists;
@@ -1999,6 +2028,60 @@ async function moveCardToList(card, newListId) {
     custom_category_label: card.custom_category_label || null,
     custom_category_color: card.custom_category_color || null,
   });
+  state.expandedCard = null;
+  await refreshAfterCardChange();
+}
+
+function findCardById(id) {
+  for (const list of state.currentBoard.lists) {
+    for (const card of list.cards) {
+      if ((parseInt(card.id) || 0) === id) return card;
+    }
+  }
+  return null;
+}
+
+function updateBulkToolbar() {
+  const toolbar = $('#bulkToolbar');
+  if (!toolbar) return;
+  const count = state.selectedCards.size;
+  if (state.view !== 'table' || count === 0) {
+    toolbar.classList.add('hidden');
+    return;
+  }
+  toolbar.classList.remove('hidden');
+  $('#bulkCount').textContent = `${count} selecionado${count > 1 ? 's' : ''}`;
+  const moveSelect = $('#bulkMoveSelect');
+  moveSelect.innerHTML = '<option value="" disabled selected>Mover pra\u2026</option>' +
+    state.currentBoard.lists.map(l =>
+      `<option value="${l.id}">${escapeHtml(l.title)}</option>`
+    ).join('');
+}
+
+async function bulkMoveCards(newListId) {
+  const ids = [...state.selectedCards];
+  for (const id of ids) {
+    const card = findCardById(id);
+    if (!card) continue;
+    await api.put(`/api/cards/${card.id}`, {
+      list_id: newListId,
+      due_date: card.due_date || null,
+      start_date: card.start_date || null,
+      category: card.category || null,
+      custom_category_label: card.custom_category_label || null,
+      custom_category_color: card.custom_category_color || null,
+    });
+  }
+  state.selectedCards.clear();
+  state.expandedCard = null;
+  await refreshAfterCardChange();
+}
+
+async function bulkDeleteCards() {
+  const ids = [...state.selectedCards];
+  if (!confirm(`Excluir ${ids.length} card${ids.length > 1 ? 's' : ''}? Essa ação não tem volta.`)) return;
+  for (const id of ids) await api.delete(`/api/cards/${id}`);
+  state.selectedCards.clear();
   state.expandedCard = null;
   await refreshAfterCardChange();
 }
@@ -4633,6 +4716,20 @@ function setupEventListeners() {
       switchView(target);
     }
   }));
+
+  // Bulk toolbar (aba Tabela): ações em lote nos cards selecionados via checkbox.
+  $('#bulkMoveSelect')?.addEventListener('change', async () => {
+    const newListId = parseInt($('#bulkMoveSelect').value);
+    if (!newListId) return;
+    await bulkMoveCards(newListId);
+  });
+  $('#bulkDeleteBtn')?.addEventListener('click', () => bulkDeleteCards());
+  $('#bulkCancelBtn')?.addEventListener('click', () => {
+    state.selectedCards.clear();
+    $$('#tableView [data-card-check]').forEach(cb => { cb.checked = false; });
+    $$('#tableView [data-group-check]').forEach(cb => { cb.checked = false; });
+    updateBulkToolbar();
+  });
 
   // Workspace nav (sidebar) — same toggle behavior. Skip action buttons that
   // don't have a data-view (e.g. "Reportar bug" opens a modal instead).

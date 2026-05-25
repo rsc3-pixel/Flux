@@ -748,6 +748,16 @@
       </button>
     </nav>
 
+    <!-- Barra de ações em lote (aba Tabela) -->
+    <div id="bulkToolbar" class="bulk-toolbar hidden">
+      <span id="bulkCount" class="bulk-count">0 selecionados</span>
+      <select id="bulkMoveSelect" class="card-move-select">
+        <option value="" disabled selected>Mover pra…</option>
+      </select>
+      <button type="button" class="btn btn-danger" id="bulkDeleteBtn">🗑 Excluir</button>
+      <button type="button" class="btn btn-ghost" id="bulkCancelBtn">✕</button>
+    </div>
+
   <!-- Modal: card editor -->
   <div class="modal-backdrop hidden" id="cardModal">
     <div class="modal">
