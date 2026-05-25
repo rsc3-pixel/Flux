@@ -1898,7 +1898,13 @@ function renderTableGroup(list, cards) {
     });
     tbody.appendChild(tr);
 
-    // Linha-detalhe: descrição completa + botão Editar. Recolhida via CSS até .expanded.
+    // Linha-detalhe: descrição + ações rápidas (Concluir, Mover, Editar). Recolhida via CSS até .expanded.
+    const allLists = state.currentBoard.lists;
+    const lastList = allLists[allLists.length - 1];
+    const isInLastList = list.id === lastList.id;
+    const listOptions = allLists.map(l =>
+      `<option value="${l.id}" ${l.id === list.id ? 'selected' : ''}>${escapeHtml(l.title)}</option>`
+    ).join('');
     const detail = document.createElement('tr');
     detail.className = 'card-detail-row' + (expanded ? ' expanded' : '');
     detail.dataset.cardDetail = cid;
@@ -1912,6 +1918,8 @@ function renderTableGroup(list, cards) {
           </div>
           <div class="card-detail-desc">${descText ? escapeHtml(descText) : '<em>Sem descrição.</em>'}</div>
           <div class="card-detail-actions">
+            ${!isInLastList ? `<button type="button" class="btn btn-success" data-conclude-card="${cid}">✅ Concluir</button>` : ''}
+            <select class="card-move-select" data-move-card="${cid}">${listOptions}</select>
             <button type="button" class="btn btn-ghost" data-edit-card="${cid}">✏️ Editar</button>
           </div>
         </div>
@@ -1921,6 +1929,21 @@ function renderTableGroup(list, cards) {
       e.stopPropagation();
       openCardModal(card);
     });
+    const concludeBtn = detail.querySelector('[data-conclude-card]');
+    if (concludeBtn) {
+      concludeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveCardToList(card, lastList.id);
+      });
+    }
+    const moveSelect = detail.querySelector('[data-move-card]');
+    if (moveSelect) {
+      moveSelect.addEventListener('change', (e) => {
+        e.stopPropagation();
+        const newListId = parseInt(moveSelect.value);
+        if (newListId !== list.id) moveCardToList(card, newListId);
+      });
+    }
     tbody.appendChild(detail);
   }
 
@@ -1963,6 +1986,21 @@ function toggleCardExpand(cardId) {
     if (row) row.classList.add('expanded');
     if (det) det.classList.add('expanded');
   }
+}
+
+// Move um card pra outra lista via PUT e re-renderiza o board.
+// Preserva campos sem COALESCE (dates, category, custom_label/color).
+async function moveCardToList(card, newListId) {
+  await api.put(`/api/cards/${card.id}`, {
+    list_id: newListId,
+    due_date: card.due_date || null,
+    start_date: card.start_date || null,
+    category: card.category || null,
+    custom_category_label: card.custom_category_label || null,
+    custom_category_color: card.custom_category_color || null,
+  });
+  state.expandedCard = null;
+  await refreshAfterCardChange();
 }
 
 function renderPriorityBar(cards) {

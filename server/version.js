@@ -16,6 +16,7 @@ const releases = [
     date: '2026-05-22',
     notes: [
       '📱 Aba Tabela agora aparece no menu inferior do celular. No mobile, o quadro fica compacto (Tarefa, Prioridade e Responsável) — pra ver a data de Vencimento e a descrição inteira, é só abrir a linha',
+      '✅ Na aba Tabela, abra uma tarefa e use "Concluir" pra mandar direto pro final do quadro, ou escolha outra lista no dropdown — sem precisar abrir o modal',
     ],
   },
   {
