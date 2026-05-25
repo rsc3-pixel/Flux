@@ -1924,9 +1924,10 @@ function renderTableGroup(list, cards) {
       ${state.visibleCols.due_date ? `<td class="col-due">${card.due_date ? (isOverdue(card.due_date) ? `<span style="color:#eb5a46;font-weight:600">${escapeHtml(formatDate(card.due_date))} ⚠</span>` : escapeHtml(formatDate(card.due_date))) : '—'}</td>` : ''}
       ${state.visibleCols.description ? `<td class="col-description">${escapeHtml((card.description || '').slice(0, 60))}${(card.description || '').length > 60 ? '...' : ''}</td>` : ''}
     `;
-    // Clicar na linha abre/fecha a linha-detalhe (modo sanfona). Checkbox é ignorado.
+    // Clicar na linha abre/fecha a linha-detalhe (modo sanfona).
+    // Checkbox e células editáveis (prioridade, responsável, vencimento) não expandem.
     tr.addEventListener('click', (e) => {
-      if (e.target.closest('.table-row-checkbox')) return;
+      if (e.target.closest('.table-row-checkbox') || e.target.closest('.col-priority') || e.target.closest('.col-assignee') || e.target.closest('.col-due')) return;
       toggleCardExpand(cid);
     });
     tbody.appendChild(tr);
@@ -1939,6 +1940,59 @@ function renderTableGroup(list, cards) {
         if (cardCb.checked) state.selectedCards.add(cid);
         else state.selectedCards.delete(cid);
         updateBulkToolbar();
+      });
+    }
+
+    // Inline edit: clicar em Prioridade, Responsável ou Vencimento edita ali mesmo.
+    const priTd = tr.querySelector('.col-priority');
+    if (priTd) {
+      priTd.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (priTd.querySelector('select')) return;
+        const cur = card.priority || 'media';
+        priTd.innerHTML = `<select class="inline-edit-select"><option value="alta"${cur === 'alta' ? ' selected' : ''}>alta</option><option value="media"${cur === 'media' ? ' selected' : ''}>média</option><option value="baixa"${cur === 'baixa' ? ' selected' : ''}>baixa</option></select>`;
+        const sel = priTd.querySelector('select');
+        sel.focus();
+        let saved = false;
+        sel.addEventListener('change', async () => { saved = true; await inlineUpdateCard(card, { priority: sel.value }); });
+        sel.addEventListener('blur', () => { if (!saved) { const p = safePriority(card.priority); priTd.innerHTML = `<span class="tag-priority ${p}">${p}</span>`; } });
+      });
+    }
+
+    const assigTd = tr.querySelector('.col-assignee');
+    if (assigTd) {
+      assigTd.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (assigTd.querySelector('input')) return;
+        const cur = card.assignee || '';
+        const textEl = assigTd.querySelector('.col-assignee-text') || assigTd;
+        textEl.innerHTML = `<input type="text" class="inline-edit-input" value="${escapeHtml(cur)}" placeholder="Responsável" />`;
+        const inp = textEl.querySelector('input');
+        inp.focus(); inp.select();
+        inp.addEventListener('blur', async () => {
+          const nv = inp.value.trim();
+          if (nv !== cur) await inlineUpdateCard(card, { assignee: nv });
+          else textEl.textContent = cur || '—';
+        });
+        inp.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); inp.blur(); }
+          if (ev.key === 'Escape') { ev.preventDefault(); textEl.textContent = cur || '—'; }
+        });
+      });
+    }
+
+    const dueTd = tr.querySelector('.col-due');
+    if (dueTd) {
+      dueTd.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (dueTd.querySelector('input')) return;
+        const cur = card.due_date || '';
+        dueTd.innerHTML = `<input type="date" class="inline-edit-input" value="${cur}" />`;
+        const inp = dueTd.querySelector('input');
+        inp.focus();
+        let saved = false;
+        inp.addEventListener('change', async () => { saved = true; await inlineUpdateCard(card, { due_date: inp.value || null }); });
+        inp.addEventListener('blur', () => { if (!saved) dueTd.innerHTML = cur ? (isOverdue(cur) ? `<span style="color:#eb5a46;font-weight:600">${escapeHtml(formatDate(cur))} ⚠</span>` : escapeHtml(formatDate(cur))) : '—'; });
       });
     }
 
@@ -2044,6 +2098,19 @@ async function moveCardToList(card, newListId) {
     custom_category_color: card.custom_category_color || null,
   });
   state.expandedCard = null;
+  await refreshAfterCardChange();
+}
+
+// Edição inline: atualiza campo(s) de um card via PUT, preservando campos sem COALESCE.
+async function inlineUpdateCard(card, fields) {
+  await api.put(`/api/cards/${card.id}`, {
+    due_date: card.due_date || null,
+    start_date: card.start_date || null,
+    category: card.category || null,
+    custom_category_label: card.custom_category_label || null,
+    custom_category_color: card.custom_category_color || null,
+    ...fields,
+  });
   await refreshAfterCardChange();
 }
 
