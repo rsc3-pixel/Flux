@@ -1396,6 +1396,10 @@ body {
   color: var(--color-text);
   outline: none;
 }
+.drag-ghost { opacity: 0.4; background: var(--color-surface-2); }
+.drag-chosen { background: var(--color-primary-soft, rgba(0,121,191,0.1)) !important; }
+.cards-table .col-title { cursor: grab; }
+.drag-chosen .col-title { cursor: grabbing; }
 .cards-table tr.card-row.expanded > td { background: var(--color-surface-2); }
 .row-caret {
   display: inline-block;

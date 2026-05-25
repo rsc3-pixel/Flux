@@ -1828,6 +1828,8 @@ function renderTable() {
   $('#tableBoardTitle').textContent = board.title;
 
   const wrap = $('#tableGroups');
+  // Destroy old Sortable instances before clearing the DOM.
+  wrap.querySelectorAll('tbody').forEach(tb => { if (tb._sortable) tb._sortable.destroy(); });
   wrap.innerHTML = '';
 
   for (const list of board.lists) {
@@ -1835,11 +1837,13 @@ function renderTable() {
     wrap.appendChild(renderTableGroup(list, cards));
   }
   updateBulkToolbar();
+  initTableDragDrop();
 }
 
 function renderTableGroup(list, cards) {
   const block = document.createElement('div');
   block.className = 'group-block';
+  block.dataset.listId = list.id;
   const color = colorFromString(list.title);
   block.style.setProperty('--group-color', color);
 
@@ -2183,6 +2187,40 @@ function tableCardCompare(a, b) {
   if (va < vb) return dir === 'asc' ? -1 : 1;
   if (va > vb) return dir === 'asc' ? 1 : -1;
   return 0;
+}
+
+// Drag-and-drop entre grupos na aba Tabela. Cada <tbody> vira um container
+// Sortable. Arrastar um card pra outro grupo muda o list_id via API.
+// Reordenação dentro do mesmo grupo é bloqueada (use Ordenar por coluna).
+function initTableDragDrop() {
+  document.querySelectorAll('#tableView .cards-table tbody').forEach(tbody => {
+    if (tbody._sortable) tbody._sortable.destroy();
+    tbody._sortable = new Sortable(tbody, {
+      group: 'table-cards',
+      animation: 150,
+      delay: 300,
+      delayOnTouchOnly: true,
+      draggable: 'tr.card-row',
+      ghostClass: 'drag-ghost',
+      chosenClass: 'drag-chosen',
+      handle: '.col-title',
+      filter: '.card-detail-row, .add-task-row, .group-summary-row',
+      onMove: (evt) => evt.from !== evt.to,
+      onEnd: async (evt) => {
+        if (evt.from === evt.to) return;
+        const cardId = parseInt(evt.item.dataset.cardRow);
+        const newListId = parseInt(evt.to.closest('.group-block')?.dataset?.listId);
+        if (!cardId || !newListId) return;
+        // Clean up orphaned detail row from the source group.
+        const orphan = evt.from.querySelector(`[data-card-detail="${cardId}"]`);
+        if (orphan) orphan.remove();
+        const card = findCardById(cardId);
+        if (!card) return;
+        state.expandedCard = null;
+        await moveCardToList(card, newListId);
+      },
+    });
+  });
 }
 
 function renderPriorityBar(cards) {
