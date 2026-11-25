@@ -37,3 +37,6 @@ id_rsa*
 
 # Claude scratch
 .claude/
+
+# Contexto local de sessões com IA (não versionar)
+CLAUDE.md
